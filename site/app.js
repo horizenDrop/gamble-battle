@@ -567,6 +567,11 @@ async function onchainCheckin() {
 
   try {
     await syncProfile();
+    if (isAlreadyCheckedInToday(state.profile?.lastCheckinDay)) {
+      updateCheckinButtonState();
+      return;
+    }
+
     const chainId = await ensureBaseChain();
     const tx = await submitCheckinTransaction(chainId);
     if (!tx.txHash) {
@@ -602,7 +607,7 @@ async function onchainCheckin() {
     if (message.includes("insufficient")) return;
   } finally {
     state.checkinInFlight = false;
-    els.checkinBtn.disabled = false;
+    updateCheckinButtonState();
   }
 }
 
@@ -798,6 +803,26 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isAlreadyCheckedInToday(lastCheckinDay) {
+  return String(lastCheckinDay ?? "") === utcDayKey(Date.now());
+}
+
+function utcDayKey(ts) {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+function updateCheckinButtonState() {
+  if (state.checkinInFlight) {
+    els.checkinBtn.disabled = true;
+    els.checkinBtn.textContent = "Check-in...";
+    return;
+  }
+
+  const already = isAlreadyCheckedInToday(state.profile?.lastCheckinDay);
+  els.checkinBtn.disabled = already;
+  els.checkinBtn.textContent = already ? "Checked In Today (UTC)" : "Onchain Check-in";
+}
+
 function isUserRejected(error) {
   const code = Number(error?.code);
   if (code === 4001) return true;
@@ -851,6 +876,7 @@ function refreshProfileUI() {
   els.checkins.textContent = String(profile.checkins ?? 0);
   refreshPveScore();
   refreshFirstTurnButtons();
+  updateCheckinButtonState();
   updateCooldown();
 }
 
