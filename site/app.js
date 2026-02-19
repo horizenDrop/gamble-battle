@@ -70,7 +70,6 @@ async function boot() {
   await setupMiniAppSDK();
   wireEvents();
   renderBoard();
-  setStatus("Connect wallet to continue");
   setInterval(updateCooldown, 1000);
   await tryAutoConnect();
 }
@@ -154,7 +153,6 @@ async function onWalletConnected(address) {
   const hasNickname = Boolean(String(state.profile?.nickname ?? "").trim());
   setScreen(hasNickname ? "menu" : "nickname");
   if (hasNickname) {
-    setStatus("Nickname locked. Choose your next action.");
   } else {
     els.nicknameInput.value = "";
     els.nicknameStatus.textContent = "Choose nickname once. It cannot be changed.";
@@ -186,7 +184,6 @@ async function spinInteractive() {
   await syncProfile();
   if (spinWaitMs() > 0) {
     els.spinResult.textContent = "Cooldown active. Come back later.";
-    setStatus("Spin blocked by cooldown");
     return;
   }
 
@@ -203,7 +200,6 @@ async function spinInteractive() {
     state.spinning = false;
     updateCooldown();
     els.spinResult.textContent = "Cooldown active. Come back later.";
-    setStatus("Spin denied by server cooldown");
     return;
   }
 
@@ -216,7 +212,6 @@ async function spinInteractive() {
   }
 
   els.spinResult.textContent = `${result.label} +${result.reward} coins`;
-  setStatus(result.tier === "jackpot" ? `JACKPOT +${result.reward}` : `Spin complete +${result.reward}`);
   state.spinning = false;
   updateCooldown();
   trackEvent("spin_success");
@@ -280,7 +275,6 @@ async function startBattle(mode) {
 
   if (!start.ok) {
     if (start.reason === "NOT_ENOUGH_COINS") {
-      setStatus("Not enough coins for PvP");
       state.profile = start.profile;
       refreshProfileUI();
     }
@@ -309,7 +303,6 @@ async function startPvpMatchmaking() {
   const join = await apiPost("/api/pvp-join", { address: state.address });
 
   if (join.status === "insufficient") {
-    setStatus(`Not enough coins for PvP (need ${join.required})`);
     await syncProfile();
     return;
   }
@@ -589,14 +582,11 @@ async function onchainCheckin() {
       return;
     }
 
-    setStatus("Check-in failed");
   } catch (error) {
     const message = String(error?.message ?? "").toLowerCase();
     if (message.includes("insufficient")) {
-      setStatus("Check-in failed: wallet reports insufficient gas funds");
       return;
     }
-    setStatus("Onchain check-in canceled or failed");
   }
 }
 
@@ -636,7 +626,6 @@ async function saveNickname() {
     els.nicknameInput.value = "";
     els.nicknameStatus.textContent = "Nickname saved";
     setScreen("menu");
-    setStatus("Nickname saved and locked");
     trackEvent("nickname_set");
   } catch {
     els.nicknameStatus.textContent = "Failed to save nickname";
@@ -649,9 +638,8 @@ async function openLeaderboard() {
     state.leaderboardRows = data.rows ?? [];
     renderLeaderboard();
     setScreen("leaderboard");
-    setStatus("Leaderboard updated");
   } catch {
-    setStatus("Failed to load leaderboard");
+    els.leaderboardList.innerHTML = "<p class=\"tiny\">Failed to load leaderboard</p>";
   }
 }
 
@@ -824,10 +812,6 @@ async function apiPost(url, body) {
   });
   if (!response.ok) throw new Error("Request failed");
   return response.json();
-}
-
-function setStatus(message) {
-  void message;
 }
 
 function applySafeArea(insets) {
