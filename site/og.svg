@@ -1,0 +1,6 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#081428"/>
+  <circle cx="920" cy="140" r="180" fill="#10335c"/>
+  <text x="80" y="260" font-family="Arial" font-size="96" fill="#e8f2ff">Gamble Battle</text>
+  <text x="80" y="350" font-family="Arial" font-size="44" fill="#a8c7ee">Spin once per hour. Win 1v1 battles.</text>
+</svg>

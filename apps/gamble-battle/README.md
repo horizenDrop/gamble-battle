@@ -1,6 +1,6 @@
-﻿# Gamble Battle App
+﻿# Gamble Battle App Engine
 
-Модуль с игровой логикой и API для Base Mini App.
+Игровой TypeScript модуль с API для спина, матчей и профиля.
 
 ## API
 - `createGambleBattle(config)`
@@ -8,13 +8,13 @@
 - `mapTouchToGrid(x, y, width, height)`
 - `mapKeyboardToCell(key)`
 
-## Что включает
-- Wallet gate и контроль chain.
+## Что покрывает
+- Wallet gate и chain enforcement.
+- Onchain submit (`wallet_sendCalls` + fallback).
 - Hourly spin и внутриигровой баланс.
-- PvP/PvE матчи со ставками.
-- Профиль, XP/level, лидерборд.
-- Onchain submit (`wallet_sendCalls` с fallback).
+- PvP/PvE tic-tac-toe с wager.
+- Profile progression и leaderboard.
 
-## Важно
-- Профиль персистится полностью (включая баланс и таймер спина) через `storage`.
-- Если `tsc` отсутствует в окружении, `npm run typecheck` не выполнится.
+## Примечания
+- Storage персистит полный профиль, включая `balance` и spin cooldown state.
+- Для `npm run typecheck` требуется установленный TypeScript (`npm install`).

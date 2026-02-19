@@ -1,25 +1,33 @@
 ﻿# Gamble Battle
 
-Репозиторий содержит только код игры Gamble Battle без шаблонных универсальных слоев.
+Gamble Battle - Base Mini App с hourly spin и 1v1 матчами.
 
-## Структура
+## Runtime структура
+- `site/index.html` - мини-апп shell с `fc:frame` embed meta.
+- `site/app.js` - инициализация Mini App SDK, context, ready handshake, wallet/actions.
+- `site/styles.css` - mobile-first UI + safe-area CSS vars.
+- `scripts/generate-public.mjs` - build-пайплайн: копирует `site` в `public`, генерирует `/.well-known/farcaster.json`.
+- `vercel.json` - `outputDirectory` = `public`.
+
+## Game engine структура
 - `apps/gamble-battle/src/index.ts` - публичный API игры.
-- `apps/gamble-battle/src/modules/profile.ts` - профиль, лидерборд, прогрессия, storage.
-- `apps/gamble-battle/src/modules/runtime.ts` - RAF loop и runtime-утилиты.
-- `apps/gamble-battle/src/modules/wallet.ts` - кошелек, chain enforcement, onchain submit.
+- `apps/gamble-battle/src/modules/profile.ts` - профиль/XP/лидерборд/storage.
+- `apps/gamble-battle/src/modules/runtime.ts` - loop и runtime-утилиты.
+- `apps/gamble-battle/src/modules/wallet.ts` - wallet/chain/onchain submit.
 
-## Игра
-- `spin` раз в час с наградой внутренней валютой.
-- Бои 1v1 в крестики-нолики: `bot` и `pvp` (через lobby code).
-- Ставки, payout, прогрессия игрока, лидерборд.
+## Build
+- `npm run build` - генерирует `public/*` для Vercel.
+- `npm run typecheck` - TypeScript проверка (после `npm install`).
 
-## Команды
-- `npm run build`
-- `npm run typecheck`
+## Env для Base Mini App билда
+- `APP_URL` - полный публичный URL приложения, например `https://your-app.vercel.app`.
+- `WEBHOOK_URL` - URL webhook endpoint.
+- `FARCASTER_HEADER` - account association header.
+- `FARCASTER_PAYLOAD` - account association payload.
+- `FARCASTER_SIGNATURE` - account association signature.
 
-## Переменные окружения
+## Env для game engine API (опционально)
 - `GAME_NAME`
 - `MINIAPP_MANIFEST_URL`
-- `WEBHOOK_URL`
 - `CHAIN_ID_HEX`
-- `REQUIRE_WALLET` (опционально)
+- `REQUIRE_WALLET`

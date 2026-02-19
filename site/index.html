@@ -1,0 +1,56 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Gamble Battle</title>
+  <meta name="description" content="Spin once per hour and battle 1v1 in Gamble Battle." />
+  <meta property="og:title" content="Gamble Battle" />
+  <meta property="og:description" content="Spin hourly, earn coins, and battle 1v1." />
+  <meta property="og:image" content="__APP_URL__/og.svg" />
+  <meta property="fc:frame" content='__FC_FRAME__' />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <h1>Gamble Battle</h1>
+      <p id="miniapp-status">Mini App status: initializing...</p>
+    </header>
+
+    <section class="panel">
+      <h2>Wallet</h2>
+      <button id="connect-btn" type="button">Connect Wallet</button>
+      <p id="wallet-address">Address: not connected</p>
+      <p id="context-info">Context: unavailable</p>
+    </section>
+
+    <section class="panel">
+      <h2>Hourly Spin</h2>
+      <button id="spin-btn" type="button">Spin</button>
+      <p id="spin-result">Spin result: waiting</p>
+      <p id="spin-cooldown">Cooldown: ready</p>
+    </section>
+
+    <section class="panel">
+      <h2>Tic-Tac-Toe vs Bot</h2>
+      <div id="board" class="board" aria-label="tic tac toe board"></div>
+      <p id="match-result">Match: in progress</p>
+      <button id="reset-match" type="button">New Match</button>
+    </section>
+
+    <section class="panel">
+      <h2>Mini App Actions</h2>
+      <div class="actions">
+        <button id="signin-btn" type="button">Sign In</button>
+        <button id="open-rules-btn" type="button">Open Rules</button>
+      </div>
+      <p id="action-result">Actions: idle</p>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
+
