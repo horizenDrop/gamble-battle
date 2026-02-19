@@ -1,4 +1,4 @@
-const { loadProfile, sendJson } = require("./_lib/profile");
+const { loadProfile, parseBody, sendJson } = require("./_lib/profile");
 const {
   PVP_ENTRY_COST,
   normalize,
@@ -20,7 +20,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: "Method not allowed" });
   }
 
-  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+  const body = parseBody(req);
   const address = normalize(body.address);
   if (!canJoinAddress(address)) {
     return sendJson(res, 400, { error: "Invalid address" });

@@ -1,4 +1,4 @@
-const { sendJson } = require("./_lib/profile");
+const { parseBody, sendJson } = require("./_lib/profile");
 const {
   normalize,
   getPlayerMatchId,
@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: "Method not allowed" });
   }
 
-  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+  const body = parseBody(req);
   const address = normalize(body.address);
   const index = Number(body.index);
 

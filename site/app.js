@@ -569,13 +569,13 @@ async function onchainCheckin() {
     await syncProfile();
     const chainId = await ensureBaseChain();
     const tx = await submitCheckinTransaction(chainId);
-    if (!tx.txHash) {
-      throw new Error("check-in transaction hash not available");
+    if (!tx.txRef) {
+      throw new Error("check-in transaction reference not available");
     }
 
     const result = await apiPost("/api/checkin", {
       address: state.address,
-      txHash: tx.txHash,
+      txHash: tx.txHash ?? "",
       txRef: tx.txRef,
       chainId
     });
@@ -723,7 +723,7 @@ async function submitCheckinTransaction(chainId) {
     try {
       const result = await state.provider.request(req);
       const normalized = await normalizeCheckinTxResult(req.method, result);
-      if (normalized?.txHash) return normalized;
+      if (normalized?.txRef) return normalized;
     } catch (error) {
       if (isUserRejected(error)) {
         throw error;
@@ -750,8 +750,7 @@ async function normalizeCheckinTxResult(method, result) {
     if (!callId) return null;
 
     const hashFromStatus = await resolveSendCallsHash(callId);
-    if (!hashFromStatus) return null;
-    return { txHash: hashFromStatus, txRef: callId.slice(0, 180) };
+    return { txHash: hashFromStatus || "", txRef: callId.slice(0, 180) };
   }
 
   const fallbackHash = normalizeTxHash(result);
@@ -933,11 +932,6 @@ function normalizeDisplaySymbols(symbols) {
 function shortAddress(address) {
   if (!address || address.length < 10) return address ?? "-";
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
-function shortHash(hash) {
-  if (!hash || hash.length < 12) return hash ?? "-";
-  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
 }
 
 function formatPct(value) {
