@@ -9,6 +9,9 @@
     "build": "npm run build --workspaces --if-present && node scripts/generate-public.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
+  "dependencies": {
+    "redis": "^4.7.1"
+  },
   "devDependencies": {
     "typescript": "^5.9.2"
   }
