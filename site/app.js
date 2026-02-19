@@ -567,11 +567,6 @@ async function onchainCheckin() {
 
   try {
     await syncProfile();
-    if (isAlreadyCheckedInToday(state.profile?.lastCheckinDay)) {
-      updateCheckinButtonState();
-      return;
-    }
-
     const chainId = await ensureBaseChain();
     const tx = await submitCheckinTransaction(chainId);
     if (!tx.txHash) {
@@ -803,14 +798,6 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isAlreadyCheckedInToday(lastCheckinDay) {
-  return String(lastCheckinDay ?? "") === utcDayKey(Date.now());
-}
-
-function utcDayKey(ts) {
-  return new Date(ts).toISOString().slice(0, 10);
-}
-
 function updateCheckinButtonState() {
   if (state.checkinInFlight) {
     els.checkinBtn.disabled = true;
@@ -818,9 +805,8 @@ function updateCheckinButtonState() {
     return;
   }
 
-  const already = isAlreadyCheckedInToday(state.profile?.lastCheckinDay);
-  els.checkinBtn.disabled = already;
-  els.checkinBtn.textContent = already ? "Checked In Today (UTC)" : "Onchain Check-in";
+  els.checkinBtn.disabled = false;
+  els.checkinBtn.textContent = "Onchain Check-in";
 }
 
 function isUserRejected(error) {

@@ -22,10 +22,6 @@ module.exports = async function handler(req, res) {
   const profile = await loadProfile(address);
   const today = todayKey();
 
-  if (profile.lastCheckinDay === today) {
-    return sendJson(res, 200, { ok: false, reason: "ALREADY_CHECKED_IN", profile });
-  }
-
   profile.checkins += 1;
   profile.lastCheckinDay = today;
   profile.lastCheckinTx = txHash;
