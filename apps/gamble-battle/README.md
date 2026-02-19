@@ -1,39 +1,20 @@
-# Gamble Battle App
+п»ї# Gamble Battle App
 
-Игровой модуль для Base Mini App.
+РњРѕРґСѓР»СЊ СЃ РёРіСЂРѕРІРѕР№ Р»РѕРіРёРєРѕР№ Рё API РґР»СЏ Base Mini App.
 
-## Игровой цикл
-1. Игрок подключает кошелек.
-2. Нажимает spin (не чаще 1 раза в час).
-3. Получает награду в валюте по сумме символов слота.
-4. Запускает бой 1v1:
-- `bot` - матч против бота;
-- `pvp` - матч против другого игрока через код лобби.
-5. Победитель получает пул ставки за вычетом комиссии, профиль обновляется (score/xp/level).
-
-## Публичный API
+## API
 - `createGambleBattle(config)`
 - `parseGambleBattleEnv(rawEnv)`
 - `mapTouchToGrid(x, y, width, height)`
 - `mapKeyboardToCell(key)`
 
-## Основные возможности
-- Wallet-gated flow.
-- Chain switch enforcement.
-- Submit pipeline (`wallet_sendCalls` + fallback).
-- Лидерборд с сортировкой verified/best.
-- Анти-абьюз базового уровня: rate limit, валидация входных данных.
-- RAF loop и ограничения по бафам (cooldown/caps/duration).
+## Р§С‚Рѕ РІРєР»СЋС‡Р°РµС‚
+- Wallet gate Рё РєРѕРЅС‚СЂРѕР»СЊ chain.
+- Hourly spin Рё РІРЅСѓС‚СЂРёРёРіСЂРѕРІРѕР№ Р±Р°Р»Р°РЅСЃ.
+- PvP/PvE РјР°С‚С‡Рё СЃРѕ СЃС‚Р°РІРєР°РјРё.
+- РџСЂРѕС„РёР»СЊ, XP/level, Р»РёРґРµСЂР±РѕСЂРґ.
+- Onchain submit (`wallet_sendCalls` СЃ fallback).
 
-## Конфиг
-Обязательные env:
-- `GAME_NAME`
-- `MINIAPP_MANIFEST_URL`
-- `WEBHOOK_URL`
-- `CHAIN_ID_HEX`
-
-Опционально:
-- `REQUIRE_WALLET=true|false`
-
-## Примечание по проверкам
-Если `npm run typecheck` падает с ошибкой `tsc is not recognized`, установите TypeScript в окружение/проект.
+## Р’Р°Р¶РЅРѕ
+- РџСЂРѕС„РёР»СЊ РїРµСЂСЃРёСЃС‚РёС‚СЃСЏ РїРѕР»РЅРѕСЃС‚СЊСЋ (РІРєР»СЋС‡Р°СЏ Р±Р°Р»Р°РЅСЃ Рё С‚Р°Р№РјРµСЂ СЃРїРёРЅР°) С‡РµСЂРµР· `storage`.
+- Р•СЃР»Рё `tsc` РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РІ РѕРєСЂСѓР¶РµРЅРёРё, `npm run typecheck` РЅРµ РІС‹РїРѕР»РЅРёС‚СЃСЏ.

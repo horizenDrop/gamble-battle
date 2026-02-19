@@ -1,10 +1,10 @@
-export type EthereumProvider = {
+export type WalletProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<any>;
   on?: (event: string, cb: (...args: any[]) => void) => void;
   removeListener?: (event: string, cb: (...args: any[]) => void) => void;
 };
 
-export type SubmitCall = {
+export type OnchainCall = {
   to: `0x${string}`;
   value?: `0x${string}`;
   data?: `0x${string}`;
@@ -13,15 +13,15 @@ export type SubmitCall = {
 export type SubmitConfig = {
   chainIdHex: `0x${string}`;
   from: `0x${string}`;
-  calls: SubmitCall[];
+  calls: OnchainCall[];
   dataSuffixHex?: `0x${string}`;
 };
 
-export async function requireChain(provider: EthereumProvider, chainIdHex: `0x${string}`) {
+export async function enforceChain(provider: WalletProvider, chainIdHex: `0x${string}`) {
   await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainIdHex }] });
 }
 
-export async function submitOnchain(provider: EthereumProvider, config: SubmitConfig): Promise<{ accepted: boolean; txHash?: string }> {
+export async function submitOnchain(provider: WalletProvider, config: SubmitConfig): Promise<{ accepted: boolean; txHash?: string }> {
   const baseCall = {
     version: "2.0.0",
     chainId: config.chainIdHex,
@@ -69,7 +69,7 @@ export async function submitOnchain(provider: EthereumProvider, config: SubmitCo
     if (result?.transactionHash) return { accepted: true, txHash: result.transactionHash };
     if (result) return { accepted: true };
   } catch {
-    // fallback below
+    // fallback to simple transaction
   }
 
   const txHash = (await provider.request({

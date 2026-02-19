@@ -1,33 +1,25 @@
-# Gamble Battle
+п»ї# Gamble Battle
 
-Gamble Battle - это Base Mini App с циклом: слот раз в час -> получение внутриигровой валюты -> PvP/PvE матч 1v1 со ставкой.
+Р РµРїРѕР·РёС‚РѕСЂРёР№ СЃРѕРґРµСЂР¶РёС‚ С‚РѕР»СЊРєРѕ РєРѕРґ РёРіСЂС‹ Gamble Battle Р±РµР· С€Р°Р±Р»РѕРЅРЅС‹С… СѓРЅРёРІРµСЂСЃР°Р»СЊРЅС‹С… СЃР»РѕРµРІ.
 
-## Что внутри
-- Часовой слот с наградой по выпавшим символам.
-- Внутриигровой баланс игрока.
-- Дуэли в крестики-нолики:
-- против бота;
-- против реального игрока через lobby code.
-- Профиль игрока: XP, уровень, базовые производные статы.
-- Лидерборд по результатам матча.
-- Wallet gate и onchain submit pipeline для Base Mini App.
+## РЎС‚СЂСѓРєС‚СѓСЂР°
+- `apps/gamble-battle/src/index.ts` - РїСѓР±Р»РёС‡РЅС‹Р№ API РёРіСЂС‹.
+- `apps/gamble-battle/src/modules/profile.ts` - РїСЂРѕС„РёР»СЊ, Р»РёРґРµСЂР±РѕСЂРґ, РїСЂРѕРіСЂРµСЃСЃРёСЏ, storage.
+- `apps/gamble-battle/src/modules/runtime.ts` - RAF loop Рё runtime-СѓС‚РёР»РёС‚С‹.
+- `apps/gamble-battle/src/modules/wallet.ts` - РєРѕС€РµР»РµРє, chain enforcement, onchain submit.
 
-## Структура проекта
-- `apps/gamble-battle` - игровая логика и публичный API игры.
-- `packages/core-miniapp` - кошелек, chain enforcement, submit транзакций.
-- `packages/core-backend` - профиль, прогрессия, лидерборд.
-- `packages/core-gamekit` - RAF loop, утилиты рантайма, баф-политики.
+## РРіСЂР°
+- `spin` СЂР°Р· РІ С‡Р°СЃ СЃ РЅР°РіСЂР°РґРѕР№ РІРЅСѓС‚СЂРµРЅРЅРµР№ РІР°Р»СЋС‚РѕР№.
+- Р‘РѕРё 1v1 РІ РєСЂРµСЃС‚РёРєРё-РЅРѕР»РёРєРё: `bot` Рё `pvp` (С‡РµСЂРµР· lobby code).
+- РЎС‚Р°РІРєРё, payout, РїСЂРѕРіСЂРµСЃСЃРёСЏ РёРіСЂРѕРєР°, Р»РёРґРµСЂР±РѕСЂРґ.
 
-## Запуск
+## РљРѕРјР°РЅРґС‹
 - `npm run build`
 - `npm run typecheck`
 
-## Переменные окружения
+## РџРµСЂРµРјРµРЅРЅС‹Рµ РѕРєСЂСѓР¶РµРЅРёСЏ
 - `GAME_NAME`
 - `MINIAPP_MANIFEST_URL`
 - `WEBHOOK_URL`
 - `CHAIN_ID_HEX`
-- `REQUIRE_WALLET` (опционально, по умолчанию `true`)
-
-## Статус
-Репозиторий приведен к одной игре Gamble Battle. Шаблонные документы и `docs` удалены.
+- `REQUIRE_WALLET` (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ)

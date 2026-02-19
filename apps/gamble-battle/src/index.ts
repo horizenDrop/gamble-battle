@@ -1,14 +1,6 @@
-import {
-  applyRun,
-  createMemoryAdapter,
-  deriveStats,
-  ProfileEntry,
-  sortLeaderboard,
-  StorageAdapter,
-  xpForNextLevel
-} from "@core/backend";
-import { applyTimedBuff, BuffPolicy, clamp, createRafLoop, LoopHandle } from "@core/gamekit";
-import { EthereumProvider, normalizeAddress, requireChain, submitOnchain, SubmitCall } from "@core/miniapp";
+import { applyRun, createMemoryStorage, deriveStats, PlayerRecord, PlayerStorage, sortLeaderboard, xpForNextLevel } from "./modules/profile";
+import { applyTimedBuff, BuffPolicy, clamp, createRafLoop, LoopHandle } from "./modules/runtime";
+import { enforceChain, normalizeAddress, OnchainCall, submitOnchain, WalletProvider } from "./modules/wallet";
 
 export type MiniAppFoundation = {
   appName: string;
@@ -21,17 +13,10 @@ export type MiniAppFoundation = {
 export type GambleBattleConfig = {
   foundation: MiniAppFoundation;
   requireWallet: boolean;
-  provider?: EthereumProvider;
-  storage?: StorageAdapter;
+  provider?: WalletProvider;
+  storage?: PlayerStorage;
   spinCooldownMs?: number;
   spinSymbols?: readonly number[];
-};
-
-export type PlayerProfile = ProfileEntry & {
-  balance: number;
-  lastSpinAt: number;
-  lastSpinReward: number;
-  lastSpinSymbols: number[];
 };
 
 export type SpinResult = {
@@ -43,7 +28,7 @@ export type SpinResult = {
   waitMs: number;
 };
 
-export type LeaderboardRow = Pick<ProfileEntry, "address" | "bestScore" | "verifiedBestScore" | "updatedAt">;
+export type LeaderboardRow = Pick<PlayerRecord, "address" | "bestScore" | "verifiedBestScore" | "updatedAt">;
 
 export type SubmitResult = {
   accepted: boolean;
@@ -51,19 +36,19 @@ export type SubmitResult = {
 };
 
 type Cell = "X" | "O" | null;
-type BattleStatus = "active" | "won" | "lost" | "draw";
-type BattleMode = "bot" | "pvp";
+type MatchStatus = "active" | "x_won" | "o_won" | "draw";
+type MatchMode = "bot" | "pvp";
 type BuffKey = "aim";
 
-type BattleSession = {
+type MatchSession = {
   id: string;
-  mode: BattleMode;
+  mode: MatchMode;
   board: Cell[];
   playerX: `0x${string}`;
   playerO: `0x${string}`;
   turn: "X" | "O";
   wager: number;
-  status: BattleStatus;
+  status: MatchStatus;
   winner: `0x${string}` | null;
   updatedAt: number;
 };
@@ -102,10 +87,8 @@ const BUFF_POLICY: BuffPolicy = {
   cooldownSeconds: { aim: 20 }
 };
 
-const lobbies = new Map<string, Lobby>();
-
 export function createGambleBattle(config: GambleBattleConfig) {
-  const storage = config.storage ?? createMemoryAdapter();
+  const storage = config.storage ?? createMemoryStorage();
   const spinSymbols = [...(config.spinSymbols ?? DEFAULT_SPIN_SYMBOLS)];
   const spinCooldownMs = Math.max(10_000, config.spinCooldownMs ?? DEFAULT_SPIN_COOLDOWN_MS);
 
@@ -115,8 +98,9 @@ export function createGambleBattle(config: GambleBattleConfig) {
     buffCooldownUntil: { aim: 0 }
   };
 
-  const profiles = new Map<`0x${string}`, PlayerProfile>();
-  const sessions = new Map<string, BattleSession>();
+  const profiles = new Map<`0x${string}`, PlayerRecord>();
+  const sessions = new Map<string, MatchSession>();
+  const lobbies = new Map<string, Lobby>();
   const pendingSubmit = new Set<`0x${string}`>();
   const lastActionAt = new Map<`0x${string}`, number>();
 
@@ -128,36 +112,20 @@ export function createGambleBattle(config: GambleBattleConfig) {
         })
       : { stop() {} };
 
-  async function restoreProfiles() {
-    const rows = await storage.read();
-    for (const row of rows) {
-      const address = normalizeAddress(row.address);
+  async function init() {
+    const records = await storage.read();
+    for (const record of records) {
+      const address = normalizeAddress(record.address);
       profiles.set(address, {
-        ...row,
+        ...record,
         address,
-        balance: 0,
-        lastSpinAt: 0,
-        lastSpinReward: 0,
-        lastSpinSymbols: []
+        lastSpinSymbols: [...record.lastSpinSymbols]
       });
     }
   }
 
-  function serializeForStorage() {
-    return [...profiles.values()].map<ProfileEntry>((entry) => ({
-      address: entry.address,
-      bestScore: entry.bestScore,
-      verifiedBestScore: entry.verifiedBestScore,
-      lastScore: entry.lastScore,
-      totalRuns: entry.totalRuns,
-      level: entry.level,
-      levelXp: entry.levelXp,
-      updatedAt: entry.updatedAt
-    }));
-  }
-
-  async function persistProfiles() {
-    await storage.write(serializeForStorage());
+  async function persist() {
+    await storage.write([...profiles.values()].map((entry) => ({ ...entry, lastSpinSymbols: [...entry.lastSpinSymbols] })));
   }
 
   function assertAddress(address: string) {
@@ -176,9 +144,14 @@ export function createGambleBattle(config: GambleBattleConfig) {
     lastActionAt.set(address, now);
   }
 
-  function ensureWalletGate(address: string | undefined) {
-    if (!config.requireWallet) return null;
+  function requireAddress(address: string | undefined) {
     if (!address) throw new Error("Wallet is required");
+    return assertAddress(address);
+  }
+
+  function resolveAddress(address: string | undefined) {
+    if (config.requireWallet) return requireAddress(address);
+    if (!address) throw new Error("Address is required");
     return assertAddress(address);
   }
 
@@ -186,7 +159,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
     const existing = profiles.get(address);
     if (existing) return existing;
 
-    const fresh: PlayerProfile = {
+    const fresh: PlayerRecord = {
       address,
       bestScore: 0,
       verifiedBestScore: 0,
@@ -205,12 +178,19 @@ export function createGambleBattle(config: GambleBattleConfig) {
     return fresh;
   }
 
-  function getProfile(address: string) {
-    return ensureProfile(assertAddress(address));
+  function applyRunProgress(address: `0x${string}`, score: number, verified: boolean, xpGained: number) {
+    const current = ensureProfile(address);
+    const next = applyRun(current, score, verified, xpGained);
+    const merged: PlayerRecord = {
+      ...current,
+      ...next
+    };
+    profiles.set(address, merged);
+    return merged;
   }
 
   function spin(address: string, now = Date.now()): SpinResult {
-    const normalized = ensureWalletGate(address) ?? assertAddress(address);
+    const normalized = resolveAddress(address);
     enforceActionRateLimit(normalized, now);
 
     const profile = ensureProfile(normalized);
@@ -229,6 +209,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
 
     const symbols = Array.from({ length: 3 }, () => spinSymbols[Math.floor(Math.random() * spinSymbols.length)]);
     const reward = symbols.reduce((sum, value) => sum + value, 0);
+
     profile.balance += reward;
     profile.lastSpinAt = now;
     profile.lastSpinReward = reward;
@@ -245,39 +226,27 @@ export function createGambleBattle(config: GambleBattleConfig) {
     };
   }
 
-  function applyRunProgress(address: `0x${string}`, score: number, verified: boolean, xpGained: number) {
-    const current = ensureProfile(address);
-    const next = applyRun(current, score, verified, xpGained);
-    const merged: PlayerProfile = {
-      ...current,
-      ...next
-    };
-    profiles.set(address, merged);
-    return merged;
-  }
-
   function maybeApplyAimBuff(now = Date.now()) {
     if (runtime.buffCooldownUntil.aim > now) {
       return false;
     }
 
     runtime.buffStacks.aim = clamp(runtime.buffStacks.aim + 1, 0, BUFF_POLICY.maxStacks.aim ?? 1);
-    runtime.buffs.aim = applyTimedBuff(
-      runtime.buffs.aim,
-      6,
-      BUFF_POLICY.maxDurationSeconds.aim ?? 12
-    );
+    runtime.buffs.aim = applyTimedBuff(runtime.buffs.aim, 6, BUFF_POLICY.maxDurationSeconds.aim ?? 12);
     runtime.buffCooldownUntil.aim = now + (BUFF_POLICY.cooldownSeconds.aim ?? 20) * 1000;
     return true;
   }
 
-  function startBotBattle(address: string, wager: number, now = Date.now()) {
-    const normalized = ensureWalletGate(address) ?? assertAddress(address);
-    enforceActionRateLimit(normalized, now);
-
+  function validateWager(wager: number) {
     if (!Number.isInteger(wager) || wager <= 0) {
       throw new Error("Wager must be a positive integer");
     }
+  }
+
+  function startBotBattle(address: string, wager: number, now = Date.now()) {
+    const normalized = resolveAddress(address);
+    enforceActionRateLimit(normalized, now);
+    validateWager(wager);
 
     const profile = ensureProfile(normalized);
     if (profile.balance < wager) {
@@ -285,7 +254,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
     }
 
     profile.balance -= wager;
-    const session: BattleSession = {
+    const session: MatchSession = {
       id: createId("bot"),
       mode: "bot",
       board: Array<Cell>(9).fill(null),
@@ -304,12 +273,9 @@ export function createGambleBattle(config: GambleBattleConfig) {
   }
 
   function createPvpLobby(address: string, wager: number, now = Date.now()) {
-    const normalized = ensureWalletGate(address) ?? assertAddress(address);
+    const normalized = resolveAddress(address);
     enforceActionRateLimit(normalized, now);
-
-    if (!Number.isInteger(wager) || wager <= 0) {
-      throw new Error("Wager must be a positive integer");
-    }
+    validateWager(wager);
 
     const profile = ensureProfile(normalized);
     if (profile.balance < wager) {
@@ -323,7 +289,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
   }
 
   function joinPvpLobby(address: string, code: string, now = Date.now()) {
-    const normalized = ensureWalletGate(address) ?? assertAddress(address);
+    const normalized = resolveAddress(address);
     enforceActionRateLimit(normalized, now);
 
     const lobby = lobbies.get(code);
@@ -342,7 +308,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
     guest.balance -= lobby.wager;
     lobbies.delete(code);
 
-    const session: BattleSession = {
+    const session: MatchSession = {
       id: createId("pvp"),
       mode: "pvp",
       board: Array<Cell>(9).fill(null),
@@ -360,7 +326,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
   }
 
   function playMove(sessionId: string, address: string, cellIndex: number, now = Date.now()) {
-    const normalized = ensureWalletGate(address) ?? assertAddress(address);
+    const normalized = resolveAddress(address);
     enforceActionRateLimit(normalized, now);
 
     const session = sessions.get(sessionId);
@@ -378,12 +344,11 @@ export function createGambleBattle(config: GambleBattleConfig) {
 
     const winnerMarker = findWinner(session.board);
     if (winnerMarker) {
-      const winner = winnerMarker === "X" ? session.playerX : session.playerO;
-      finishSession(session, winner, now);
+      finishSession(session, winnerMarker === "X" ? session.playerX : session.playerO, now);
       return session;
     }
 
-    if (session.board.every(Boolean)) {
+    if (session.board.every((cell) => cell !== null)) {
       finishSession(session, null, now);
       return session;
     }
@@ -397,7 +362,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
       const postBotWinner = findWinner(session.board);
       if (postBotWinner) {
         finishSession(session, postBotWinner === "X" ? session.playerX : session.playerO, now);
-      } else if (session.board.every(Boolean)) {
+      } else if (session.board.every((cell) => cell !== null)) {
         finishSession(session, null, now);
       } else {
         session.turn = "X";
@@ -407,7 +372,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
     return session;
   }
 
-  function finishSession(session: BattleSession, winner: `0x${string}` | null, now: number) {
+  function finishSession(session: MatchSession, winner: `0x${string}` | null, now: number) {
     const pool = session.wager * 2;
     const payout = Math.floor((pool * (10_000 - PLATFORM_FEE_BPS)) / 10_000);
 
@@ -419,7 +384,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
       const loser = winner === session.playerX ? session.playerO : session.playerX;
       applyRunProgress(loser, 0, false, 8);
 
-      session.status = winner === session.playerX ? "won" : "lost";
+      session.status = winner === session.playerX ? "x_won" : "o_won";
       session.winner = winner;
     } else {
       ensureProfile(session.playerX).balance += session.wager;
@@ -433,12 +398,8 @@ export function createGambleBattle(config: GambleBattleConfig) {
     session.updatedAt = now;
   }
 
-  async function submitBattleOnchain(address: string, calls: SubmitCall[], dataSuffixHex?: `0x${string}`): Promise<SubmitResult> {
-    const normalized = ensureWalletGate(address);
-    if (!normalized) {
-      return { accepted: false };
-    }
-
+  async function submitBattleOnchain(address: string, calls: OnchainCall[], dataSuffixHex?: `0x${string}`): Promise<SubmitResult> {
+    const normalized = resolveAddress(address);
     if (!config.provider) {
       throw new Error("Provider is required for onchain submit");
     }
@@ -449,7 +410,7 @@ export function createGambleBattle(config: GambleBattleConfig) {
 
     pendingSubmit.add(normalized);
     try {
-      await requireChain(config.provider, config.foundation.chainIdHex);
+      await enforceChain(config.provider, config.foundation.chainIdHex);
       const result = await submitOnchain(config.provider, {
         chainIdHex: config.foundation.chainIdHex,
         from: normalized,
@@ -471,13 +432,12 @@ export function createGambleBattle(config: GambleBattleConfig) {
     }));
   }
 
-  function profileSnapshot(address: string) {
-    const profile = getProfile(address);
-    const stats = deriveStats(profile.level);
+  function getProfile(address: string) {
+    const profile = ensureProfile(resolveAddress(address));
     return {
       ...profile,
       nextLevelXp: xpForNextLevel(profile.level),
-      derivedStats: stats
+      derivedStats: deriveStats(profile.level)
     };
   }
 
@@ -492,10 +452,10 @@ export function createGambleBattle(config: GambleBattleConfig) {
   }
 
   return {
-    init: restoreProfiles,
-    persist: persistProfiles,
+    init,
+    persist,
     miniAppMeta,
-    getProfile: profileSnapshot,
+    getProfile,
     spin,
     startBotBattle,
     createPvpLobby,

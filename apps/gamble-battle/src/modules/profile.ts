@@ -1,4 +1,4 @@
-export type ProfileEntry = {
+export type PlayerRecord = {
   address: string;
   bestScore: number;
   verifiedBestScore: number;
@@ -7,11 +7,15 @@ export type ProfileEntry = {
   level: number;
   levelXp: number;
   updatedAt: number;
+  balance: number;
+  lastSpinAt: number;
+  lastSpinReward: number;
+  lastSpinSymbols: number[];
 };
 
-export type StorageAdapter = {
-  read: () => Promise<ProfileEntry[]>;
-  write: (entries: ProfileEntry[]) => Promise<void>;
+export type PlayerStorage = {
+  read: () => Promise<PlayerRecord[]>;
+  write: (entries: PlayerRecord[]) => Promise<void>;
 };
 
 export function xpForNextLevel(level: number) {
@@ -24,7 +28,7 @@ export function deriveStats(level: number) {
   return { damage, maxHp, nextLevelXp: xpForNextLevel(level) };
 }
 
-export function sortLeaderboard(entries: ProfileEntry[]) {
+export function sortLeaderboard(entries: PlayerRecord[]) {
   return [...entries].sort((a, b) => {
     if (b.verifiedBestScore !== a.verifiedBestScore) return b.verifiedBestScore - a.verifiedBestScore;
     if (b.bestScore !== a.bestScore) return b.bestScore - a.bestScore;
@@ -32,7 +36,7 @@ export function sortLeaderboard(entries: ProfileEntry[]) {
   });
 }
 
-export function applyRun(previous: ProfileEntry | null, score: number, verified: boolean, xpGained: number): ProfileEntry {
+export function applyRun(previous: PlayerRecord | null, score: number, verified: boolean, xpGained: number): PlayerRecord {
   const prev = previous ?? {
     address: "",
     bestScore: 0,
@@ -41,7 +45,11 @@ export function applyRun(previous: ProfileEntry | null, score: number, verified:
     totalRuns: 0,
     level: 1,
     levelXp: 0,
-    updatedAt: 0
+    updatedAt: 0,
+    balance: 0,
+    lastSpinAt: 0,
+    lastSpinReward: 0,
+    lastSpinSymbols: []
   };
 
   let level = Math.max(1, prev.level);
@@ -63,8 +71,8 @@ export function applyRun(previous: ProfileEntry | null, score: number, verified:
   };
 }
 
-export function createMemoryAdapter(): StorageAdapter {
-  let entries: ProfileEntry[] = [];
+export function createMemoryStorage(): PlayerStorage {
+  let entries: PlayerRecord[] = [];
   return {
     async read() {
       return entries;
