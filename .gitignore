@@ -2,6 +2,7 @@ node_modules/
 .next/
 out/
 dist/
+public/
 coverage/
 .env
 .env.*

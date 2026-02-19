@@ -6,8 +6,8 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run -ws build",
-    "typecheck": "npm run -ws typecheck"
+    "build": "npm run build --workspaces --if-present && node scripts/generate-public.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.9.2"
