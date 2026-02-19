@@ -39,10 +39,17 @@
 
         <p id="menu-address" class="tiny center">Wallet: -</p>
 
+        <div class="nickname-row">
+          <input id="nickname-input" class="nick-input" type="text" maxlength="24" placeholder="Nickname" />
+          <button id="save-nickname-btn" class="btn btn-ink" type="button">Save</button>
+        </div>
+
         <div class="stats-row">
           <span class="stat-pill">W <strong id="wins">0</strong></span>
           <span class="stat-pill">L <strong id="losses">0</strong></span>
           <span class="stat-pill">D <strong id="draws">0</strong></span>
+          <span class="stat-pill">PvE WR <strong id="pve-winrate">0%</strong></span>
+          <span class="stat-pill">PvP WR <strong id="pvp-winrate">0%</strong></span>
           <span class="stat-pill">Check-ins <strong id="checkins">0</strong></span>
         </div>
 
@@ -50,6 +57,7 @@
           <button id="open-slot-btn" class="btn btn-gold large" type="button">Spin</button>
           <button id="pve-btn" class="btn btn-emerald" type="button">PvE Training</button>
           <button id="pvp-btn" class="btn btn-crimson" type="button">PvP Match</button>
+          <button id="leaderboard-btn" class="btn btn-ink" type="button">Leaderboard</button>
           <button id="checkin-btn" class="btn btn-ink" type="button">Onchain Check-in</button>
         </div>
 
@@ -73,6 +81,16 @@
         <button id="spin-btn" class="btn btn-gold large" type="button">Pull</button>
         <p id="spin-result" class="tiny center">Ready to spin</p>
         <p id="spin-cooldown" class="tiny center">Cooldown: ready</p>
+      </article>
+    </section>
+
+    <section id="screen-leaderboard" class="screen">
+      <article class="card card-leaderboard">
+        <header class="panel-head">
+          <h2>Leaderboard</h2>
+          <button id="leaderboard-back-btn" class="btn btn-ink" type="button">Back</button>
+        </header>
+        <div id="leaderboard-list" class="leaderboard-list"></div>
       </article>
     </section>
 

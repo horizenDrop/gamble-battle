@@ -14,16 +14,21 @@ const state = {
   finished: false,
   mode: "pve",
   pveFirstMover: "player",
-  playerTurn: true
+  playerTurn: true,
+  leaderboardRows: []
 };
 
 const els = {
   walletAddress: byId("wallet-address"),
   menuAddress: byId("menu-address"),
   coins: byId("coins"),
+  nicknameInput: byId("nickname-input"),
+  saveNicknameBtn: byId("save-nickname-btn"),
   wins: byId("wins"),
   losses: byId("losses"),
   draws: byId("draws"),
+  pveWinRate: byId("pve-winrate"),
+  pvpWinRate: byId("pvp-winrate"),
   checkins: byId("checkins"),
   menuHint: byId("menu-hint"),
   spinResult: byId("spin-result"),
@@ -40,6 +45,8 @@ const els = {
   slotBackBtn: byId("slot-back-btn"),
   pveBtn: byId("pve-btn"),
   pvpBtn: byId("pvp-btn"),
+  leaderboardBtn: byId("leaderboard-btn"),
+  leaderboardBackBtn: byId("leaderboard-back-btn"),
   pveFirstPlayerBtn: byId("pve-first-player"),
   pveFirstBotBtn: byId("pve-first-bot"),
   checkinBtn: byId("checkin-btn"),
@@ -49,7 +56,9 @@ const els = {
   screenWallet: byId("screen-wallet"),
   screenMenu: byId("screen-menu"),
   screenSlot: byId("screen-slot"),
-  screenBattle: byId("screen-battle")
+  screenLeaderboard: byId("screen-leaderboard"),
+  screenBattle: byId("screen-battle"),
+  leaderboardList: byId("leaderboard-list")
 };
 
 boot();
@@ -81,6 +90,9 @@ function wireEvents() {
   els.spinBtn.addEventListener("click", spinInteractive);
   els.pveBtn.addEventListener("click", () => startBattle("pve"));
   els.pvpBtn.addEventListener("click", () => startBattle("pvp"));
+  els.leaderboardBtn.addEventListener("click", openLeaderboard);
+  els.leaderboardBackBtn.addEventListener("click", () => setScreen("menu"));
+  els.saveNicknameBtn.addEventListener("click", saveNickname);
   els.pveFirstPlayerBtn.addEventListener("click", () => setPveFirstMover("player"));
   els.pveFirstBotBtn.addEventListener("click", () => setPveFirstMover("bot"));
   els.checkinBtn.addEventListener("click", onchainCheckin);
@@ -127,6 +139,7 @@ async function onWalletConnected(address) {
 
   const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}`);
   state.profile = response.profile;
+  els.nicknameInput.value = state.profile.nickname ?? "";
   refreshProfileUI();
   setScreen("menu");
 }
@@ -135,6 +148,7 @@ function setScreen(name) {
   els.screenWallet.classList.toggle("active", name === "wallet");
   els.screenMenu.classList.toggle("active", name === "menu");
   els.screenSlot.classList.toggle("active", name === "slot");
+  els.screenLeaderboard.classList.toggle("active", name === "leaderboard");
   els.screenBattle.classList.toggle("active", name === "battle");
 }
 
@@ -175,10 +189,10 @@ async function spinInteractive() {
   refreshProfileUI();
 
   for (let i = 0; i < els.reels.length; i += 1) {
-    els.reels[i].textContent = String(result.symbols[i]);
+    els.reels[i].textContent = String(result.displaySymbols?.[i] ?? result.symbols[i]);
   }
 
-  els.spinResult.textContent = `Result ${result.symbols.join(" | ")}  +${result.reward} coins`;
+  els.spinResult.textContent = `${result.label}  +${result.reward} coins`;
   state.spinning = false;
   updateCooldown();
 }
@@ -450,6 +464,59 @@ async function onchainCheckin() {
   }
 }
 
+async function saveNickname() {
+  if (!state.address) return;
+  const nickname = String(els.nicknameInput.value ?? "").trim();
+  if (nickname.length < 2) {
+    els.menuHint.textContent = "Nickname must be at least 2 chars";
+    return;
+  }
+
+  try {
+    const result = await apiPost("/api/player", {
+      address: state.address,
+      nickname
+    });
+    state.profile = result.profile;
+    refreshProfileUI();
+    els.menuHint.textContent = "Nickname saved";
+  } catch {
+    els.menuHint.textContent = "Failed to save nickname";
+  }
+}
+
+async function openLeaderboard() {
+  try {
+    const data = await apiGet("/api/leaderboard?limit=30");
+    state.leaderboardRows = data.rows ?? [];
+    renderLeaderboard();
+    setScreen("leaderboard");
+  } catch {
+    els.menuHint.textContent = "Failed to load leaderboard";
+  }
+}
+
+function renderLeaderboard() {
+  if (!state.leaderboardRows.length) {
+    els.leaderboardList.innerHTML = "<p class=\"tiny\">No players yet</p>";
+    return;
+  }
+
+  els.leaderboardList.innerHTML = state.leaderboardRows
+    .map((row, index) => {
+      const nick = displayName(row);
+      return `<div class=\"lb-row\">
+        <div class=\"lb-rank\">#${index + 1}</div>
+        <div>
+          <div class=\"lb-name\">${escapeHtml(nick)}</div>
+          <div class=\"lb-meta\">${shortAddress(row.evmAddress || row.address)} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)}</div>
+        </div>
+        <div class=\"lb-rank\">${Number(row.balance ?? 0)}</div>
+      </div>`;
+    })
+    .join("");
+}
+
 async function submitCheckinTransaction() {
   const call = {
     to: state.address,
@@ -508,10 +575,14 @@ function refreshProfileUI() {
   const profile = state.profile;
   if (!profile) return;
 
+  els.nicknameInput.value = profile.nickname ?? "";
+  els.menuAddress.textContent = `Wallet: ${shortAddress(profile.evmAddress || profile.address)} (${displayName(profile)})`;
   els.coins.textContent = String(profile.balance ?? 0);
   els.wins.textContent = String(profile.wins ?? 0);
   els.losses.textContent = String(profile.losses ?? 0);
   els.draws.textContent = String(profile.draws ?? 0);
+  els.pveWinRate.textContent = formatPct(profile.pveWinRate);
+  els.pvpWinRate.textContent = formatPct(profile.pvpWinRate);
   els.checkins.textContent = String(profile.checkins ?? 0);
   refreshPveScore();
   refreshFirstTurnButtons();
@@ -549,7 +620,7 @@ function applySafeArea(insets) {
 }
 
 function randSymbol() {
-  const values = [1, 2, 3, 5, 8, 13];
+  const values = ["🍒", "🍋", "🟦", "7", "💎"];
   return values[Math.floor(Math.random() * values.length)];
 }
 
@@ -561,6 +632,25 @@ function shortAddress(address) {
 function shortHash(hash) {
   if (!hash || hash.length < 12) return hash ?? "-";
   return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
+}
+
+function formatPct(value) {
+  const num = Number(value ?? 0);
+  return `${num.toFixed(1)}%`;
+}
+
+function displayName(profile) {
+  const name = String(profile?.nickname ?? "").trim();
+  return name || "Anonymous";
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function byId(id) {

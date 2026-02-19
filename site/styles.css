@@ -105,6 +105,23 @@ body {
   font-size: 0.9rem;
 }
 
+.nickname-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.nick-input {
+  border: 1px solid #8f703f;
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #fff8ea;
+  color: #2d230f;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1rem;
+}
+
 .menu-grid {
   display: grid;
   gap: 10px;
@@ -206,6 +223,36 @@ h2 { margin: 0; font-family: "Cinzel", serif; }
 
 .tiny { margin: 6px 0 0; font-size: 0.95rem; }
 .center { text-align: center; }
+
+.leaderboard-list {
+  display: grid;
+  gap: 8px;
+}
+
+.lb-row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #8f703f;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff8ea;
+}
+
+.lb-rank {
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+}
+
+.lb-name {
+  font-weight: 700;
+}
+
+.lb-meta {
+  font-size: 0.85rem;
+  color: #5f4a26;
+}
 
 @media (max-width: 600px) {
   .menu-grid.fluid { grid-template-columns: 1fr; }
