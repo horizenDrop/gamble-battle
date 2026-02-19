@@ -1,6 +1,4 @@
-﻿const SPIN_VALUES = [1, 2, 3, 5, 8, 13];
-const PVP_ENTRY_COST = 10;
-const WIN_LINES = [
+﻿const WIN_LINES = [
   [0, 1, 2], [3, 4, 5], [6, 7, 8],
   [0, 3, 6], [1, 4, 7], [2, 5, 8],
   [0, 4, 8], [2, 4, 6]
@@ -10,10 +8,7 @@ const state = {
   sdk: null,
   provider: null,
   address: null,
-  coins: 0,
-  inMiniApp: false,
-  lastSpinAt: 0,
-  cooldownMs: 60 * 60 * 1000,
+  profile: null,
   spinning: false,
   board: Array(9).fill(null),
   finished: false,
@@ -24,6 +19,11 @@ const els = {
   walletAddress: byId("wallet-address"),
   menuAddress: byId("menu-address"),
   coins: byId("coins"),
+  wins: byId("wins"),
+  losses: byId("losses"),
+  draws: byId("draws"),
+  checkins: byId("checkins"),
+  menuHint: byId("menu-hint"),
   spinResult: byId("spin-result"),
   spinCooldown: byId("spin-cooldown"),
   matchResult: byId("match-result"),
@@ -36,9 +36,9 @@ const els = {
   slotBackBtn: byId("slot-back-btn"),
   pveBtn: byId("pve-btn"),
   pvpBtn: byId("pvp-btn"),
+  checkinBtn: byId("checkin-btn"),
   resetBtn: byId("reset-match"),
   backMenuBtn: byId("back-menu"),
-  openRulesBtn: byId("open-rules-btn"),
   reels: [byId("reel-0"), byId("reel-1"), byId("reel-2")],
   screenWallet: byId("screen-wallet"),
   screenMenu: byId("screen-menu"),
@@ -52,10 +52,8 @@ async function boot() {
   await setupMiniAppSDK();
   wireEvents();
   renderBoard();
-  refreshCoins();
-  updateCooldown();
-  setInterval(updateCooldown, 1000);
   await tryAutoConnect();
+  setInterval(updateCooldown, 1000);
 }
 
 async function setupMiniAppSDK() {
@@ -63,7 +61,6 @@ async function setupMiniAppSDK() {
     const mod = await import("https://esm.sh/@farcaster/miniapp-sdk");
     state.sdk = mod.default;
     const context = await Promise.resolve(state.sdk.context);
-    state.inMiniApp = Boolean(context?.client);
     applySafeArea(context?.client?.safeAreaInsets);
     await state.sdk.actions?.ready?.();
   } catch {
@@ -78,9 +75,9 @@ function wireEvents() {
   els.spinBtn.addEventListener("click", spinInteractive);
   els.pveBtn.addEventListener("click", () => startBattle("pve"));
   els.pvpBtn.addEventListener("click", () => startBattle("pvp"));
+  els.checkinBtn.addEventListener("click", onchainCheckin);
   els.resetBtn.addEventListener("click", resetMatch);
   els.backMenuBtn.addEventListener("click", () => setScreen("menu"));
-  els.openRulesBtn.addEventListener("click", openRules);
 }
 
 async function tryAutoConnect() {
@@ -93,9 +90,9 @@ async function tryAutoConnect() {
     const first = Array.isArray(accounts) ? accounts[0] : null;
     if (!first) return;
 
-    onWalletConnected(first);
+    await onWalletConnected(first);
   } catch {
-    // silent fallback
+    // silent
   }
 }
 
@@ -109,16 +106,20 @@ async function connectWalletInteractive() {
     const first = Array.isArray(accounts) ? accounts[0] : null;
     if (!first) throw new Error("Wallet returned no account");
 
-    onWalletConnected(first);
+    await onWalletConnected(first);
   } catch {
     els.walletAddress.textContent = "Connection failed. Try again.";
   }
 }
 
-function onWalletConnected(address) {
-  state.address = address;
-  els.walletAddress.textContent = `Connected: ${shortAddress(address)}`;
-  els.menuAddress.textContent = `Wallet: ${shortAddress(address)}`;
+async function onWalletConnected(address) {
+  state.address = String(address).toLowerCase();
+  els.walletAddress.textContent = `Connected: ${shortAddress(state.address)}`;
+  els.menuAddress.textContent = `Wallet: ${shortAddress(state.address)}`;
+
+  const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}`);
+  state.profile = response.profile;
+  refreshProfileUI();
   setScreen("menu");
 }
 
@@ -132,9 +133,8 @@ function setScreen(name) {
 async function spinInteractive() {
   if (!state.address || state.spinning) return;
 
-  const now = Date.now();
-  const wait = state.cooldownMs - (now - state.lastSpinAt);
-  if (state.lastSpinAt > 0 && wait > 0) {
+  const wait = spinWaitMs();
+  if (wait > 0) {
     els.spinResult.textContent = "Cooldown active. Come back later.";
     return;
   }
@@ -143,25 +143,36 @@ async function spinInteractive() {
   els.spinBtn.disabled = true;
   els.spinResult.textContent = "Spinning...";
 
-  const finalValues = [randSymbol(), randSymbol(), randSymbol()];
-  const result = await animateReels(finalValues);
+  await animateReels();
 
-  const reward = result.reduce((a, b) => a + b, 0);
-  state.coins += reward;
-  state.lastSpinAt = Date.now();
-  refreshCoins();
+  const result = await apiPost("/api/spin", { address: state.address });
+  if (!result.ok) {
+    els.spinResult.textContent = "Cooldown active. Come back later.";
+    state.profile = result.profile;
+    refreshProfileUI();
+    state.spinning = false;
+    updateCooldown();
+    return;
+  }
 
-  els.spinResult.textContent = `Result ${result.join(" | ")}  +${reward} coins`;
+  state.profile = result.profile;
+  refreshProfileUI();
+
+  for (let i = 0; i < els.reels.length; i += 1) {
+    els.reels[i].textContent = String(result.symbols[i]);
+  }
+
+  els.spinResult.textContent = `Result ${result.symbols.join(" | ")}  +${result.reward} coins`;
   state.spinning = false;
   updateCooldown();
 }
 
-async function animateReels(finalValues) {
+async function animateReels() {
   const spinMs = 1700;
   const tickMs = 80;
   const start = Date.now();
 
-  return new Promise((resolve) => {
+  await new Promise((resolve) => {
     const interval = setInterval(() => {
       for (let i = 0; i < els.reels.length; i += 1) {
         els.reels[i].textContent = String(randSymbol());
@@ -169,30 +180,27 @@ async function animateReels(finalValues) {
 
       if (Date.now() - start >= spinMs) {
         clearInterval(interval);
-        for (let i = 0; i < els.reels.length; i += 1) {
-          els.reels[i].textContent = String(finalValues[i]);
-        }
-        resolve(finalValues);
+        resolve();
       }
     }, tickMs);
   });
 }
 
+function spinWaitMs() {
+  const lastSpinAt = state.profile?.lastSpinAt ?? 0;
+  if (!lastSpinAt) return 0;
+  return Math.max(0, 60 * 60 * 1000 - (Date.now() - lastSpinAt));
+}
+
 function updateCooldown() {
-  if (state.lastSpinAt === 0) {
+  const wait = spinWaitMs();
+  if (wait <= 0) {
     els.spinCooldown.textContent = "Cooldown: ready";
     els.spinBtn.disabled = state.spinning;
     return;
   }
 
-  const left = Math.max(0, state.cooldownMs - (Date.now() - state.lastSpinAt));
-  if (left === 0) {
-    els.spinCooldown.textContent = "Cooldown: ready";
-    els.spinBtn.disabled = state.spinning;
-    return;
-  }
-
-  const total = Math.floor(left / 1000);
+  const total = Math.floor(wait / 1000);
   const hh = String(Math.floor(total / 3600)).padStart(2, "0");
   const mm = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
   const ss = String(total % 60).padStart(2, "0");
@@ -200,20 +208,31 @@ function updateCooldown() {
   els.spinBtn.disabled = true;
 }
 
-function startBattle(mode) {
-  if (mode === "pvp") {
-    if (state.coins < PVP_ENTRY_COST) {
-      setScreen("menu");
-      return;
+async function startBattle(mode) {
+  if (!state.address) return;
+
+  const start = await apiPost("/api/battle", {
+    address: state.address,
+    mode,
+    stage: "start"
+  });
+
+  if (!start.ok) {
+    if (start.reason === "NOT_ENOUGH_COINS") {
+      els.menuHint.textContent = "Not enough coins for PvP";
+      state.profile = start.profile;
+      refreshProfileUI();
     }
-    state.coins -= PVP_ENTRY_COST;
-    refreshCoins();
+    return;
   }
+
+  state.profile = start.profile;
+  refreshProfileUI();
 
   state.mode = mode;
   resetMatch();
   els.battleTitle.textContent = mode === "pve" ? "PvE Training" : "PvP Match";
-  els.battleSubtitle.textContent = mode === "pve" ? "Practice mode. Coins are safe." : `Entry: ${PVP_ENTRY_COST} coins`;
+  els.battleSubtitle.textContent = mode === "pve" ? "Practice mode. Coins are safe." : `Entry ${start.entryCost} coins`;
   setScreen("battle");
 }
 
@@ -229,46 +248,56 @@ function renderBoard() {
   });
 }
 
-function onPlayerMove(index) {
+async function onPlayerMove(index) {
   if (state.finished || state.board[index]) return;
 
   state.board[index] = "X";
-  if (resolveWinner("X")) return;
+  if (await resolveWinner("X")) return;
 
   const empty = state.board.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
   if (empty.length === 0) {
     state.finished = true;
     els.matchResult.textContent = "Draw";
+    await finishBattle("draw");
     renderBoard();
     return;
   }
 
   const botPick = pickBotMove(state.board, empty);
   state.board[botPick] = "O";
-  resolveWinner("O");
+  await resolveWinner("O");
   renderBoard();
 }
 
-function resolveWinner(marker) {
+async function resolveWinner(marker) {
   const won = WIN_LINES.some(([a, b, c]) => state.board[a] === marker && state.board[b] === marker && state.board[c] === marker);
   if (!won) return false;
 
   state.finished = true;
-
   if (marker === "X") {
-    if (state.mode === "pvp") {
-      state.coins += PVP_ENTRY_COST * 2;
-      refreshCoins();
-      els.matchResult.textContent = "You win +20";
-    } else {
-      els.matchResult.textContent = "You win";
-    }
+    els.matchResult.textContent = "You win";
+    await finishBattle("win");
   } else {
-    els.matchResult.textContent = state.mode === "pvp" ? "You lost" : "Bot wins";
+    els.matchResult.textContent = "You lost";
+    await finishBattle("loss");
   }
 
   renderBoard();
   return true;
+}
+
+async function finishBattle(outcome) {
+  const result = await apiPost("/api/battle", {
+    address: state.address,
+    mode: state.mode,
+    stage: "finish",
+    outcome
+  });
+
+  if (result.ok) {
+    state.profile = result.profile;
+    refreshProfileUI();
+  }
 }
 
 function resetMatch() {
@@ -339,17 +368,65 @@ function getWinner(board) {
   return null;
 }
 
-async function openRules() {
-  const url = "https://docs.base.org/mini-apps/featured-guidelines/design-guidelines";
+async function onchainCheckin() {
+  if (!state.address || !state.provider) return;
+
   try {
-    if (state.sdk?.actions?.openUrl) {
-      await state.sdk.actions.openUrl(url);
-      return;
+    await ensureBaseChain();
+    const txHash = await state.provider.request({
+      method: "eth_sendTransaction",
+      params: [
+        {
+          from: state.address,
+          to: state.address,
+          value: "0x0",
+          data: "0x67626c5f636865636b696e"
+        }
+      ]
+    });
+
+    const result = await apiPost("/api/checkin", {
+      address: state.address,
+      txHash
+    });
+
+    if (result.ok) {
+      state.profile = result.profile;
+      refreshProfileUI();
+      els.menuHint.textContent = `Check-in confirmed (${shortHash(txHash)})`;
+    } else if (result.reason === "ALREADY_CHECKED_IN") {
+      els.menuHint.textContent = "Today check-in already completed";
+      state.profile = result.profile;
+      refreshProfileUI();
+    } else {
+      els.menuHint.textContent = "Check-in failed";
     }
-    window.open(url, "_blank", "noopener,noreferrer");
   } catch {
-    // ignore
+    els.menuHint.textContent = "Onchain check-in canceled or failed";
   }
+}
+
+async function ensureBaseChain() {
+  const chainId = await state.provider.request({ method: "eth_chainId" });
+  if (String(chainId).toLowerCase() === "0x2105") return;
+
+  await state.provider.request({
+    method: "wallet_switchEthereumChain",
+    params: [{ chainId: "0x2105" }]
+  });
+}
+
+function refreshProfileUI() {
+  const profile = state.profile;
+  if (!profile) return;
+
+  els.coins.textContent = String(profile.balance ?? 0);
+  els.wins.textContent = String(profile.wins ?? 0);
+  els.losses.textContent = String(profile.losses ?? 0);
+  els.draws.textContent = String(profile.draws ?? 0);
+  els.checkins.textContent = String(profile.checkins ?? 0);
+  els.menuHint.textContent = "Ready";
+  updateCooldown();
 }
 
 async function getProvider() {
@@ -357,8 +434,20 @@ async function getProvider() {
   return sdkProvider ?? window.ethereum ?? null;
 }
 
-function refreshCoins() {
-  els.coins.textContent = String(state.coins);
+async function apiGet(url) {
+  const response = await fetch(url, { method: "GET" });
+  if (!response.ok) throw new Error("Request failed");
+  return response.json();
+}
+
+async function apiPost(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) throw new Error("Request failed");
+  return response.json();
 }
 
 function applySafeArea(insets) {
@@ -370,12 +459,18 @@ function applySafeArea(insets) {
 }
 
 function randSymbol() {
-  return SPIN_VALUES[Math.floor(Math.random() * SPIN_VALUES.length)];
+  const values = [1, 2, 3, 5, 8, 13];
+  return values[Math.floor(Math.random() * values.length)];
 }
 
 function shortAddress(address) {
   if (!address || address.length < 10) return address ?? "-";
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function shortHash(hash) {
+  if (!hash || hash.length < 12) return hash ?? "-";
+  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
 }
 
 function byId(id) {

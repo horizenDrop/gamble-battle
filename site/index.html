@@ -21,31 +21,39 @@
     <section id="screen-wallet" class="screen active">
       <article class="card card-wallet">
         <h1 class="brand">Gamble Battle</h1>
-        <p class="subtitle">Enter the arena. Spin. Wager. Win.</p>
+        <p class="subtitle">Spin. Wager. Dominate.</p>
         <button id="connect-btn" class="btn btn-gold" type="button">Connect Wallet</button>
         <p id="wallet-address" class="tiny">Wallet not connected</p>
       </article>
     </section>
 
     <section id="screen-menu" class="screen">
-      <article class="card card-menu">
+      <article class="card card-menu center-card">
         <header class="menu-top">
-          <div>
-            <h1 class="brand">Main Menu</h1>
-            <p id="menu-address" class="tiny">Wallet: -</p>
-          </div>
+          <h1 class="brand small">Main Menu</h1>
           <div class="coins-box">
             <span>Coins</span>
             <strong id="coins">0</strong>
           </div>
         </header>
 
-        <div class="menu-grid">
+        <p id="menu-address" class="tiny center">Wallet: -</p>
+
+        <div class="stats-row">
+          <span class="stat-pill">W <strong id="wins">0</strong></span>
+          <span class="stat-pill">L <strong id="losses">0</strong></span>
+          <span class="stat-pill">D <strong id="draws">0</strong></span>
+          <span class="stat-pill">Check-ins <strong id="checkins">0</strong></span>
+        </div>
+
+        <div class="menu-grid fluid">
           <button id="open-slot-btn" class="btn btn-gold large" type="button">Spin</button>
           <button id="pve-btn" class="btn btn-emerald" type="button">PvE Training</button>
           <button id="pvp-btn" class="btn btn-crimson" type="button">PvP Match</button>
-          <button id="open-rules-btn" class="btn btn-ink" type="button">Open Rules</button>
+          <button id="checkin-btn" class="btn btn-ink" type="button">Onchain Check-in</button>
         </div>
+
+        <p id="menu-hint" class="tiny center">Ready</p>
       </article>
     </section>
 
