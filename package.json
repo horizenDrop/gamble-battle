@@ -1,0 +1,13 @@
+{
+  "name": "base-game-core",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run -ws build",
+    "typecheck": "npm run -ws typecheck"
+  }
+}

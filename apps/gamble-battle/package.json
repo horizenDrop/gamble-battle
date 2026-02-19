@@ -1,0 +1,15 @@
+{
+  "name": "@apps/gamble-battle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo gamble-battle build placeholder",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@core/backend": "0.1.0",
+    "@core/gamekit": "0.1.0",
+    "@core/miniapp": "0.1.0"
+  }
+}
