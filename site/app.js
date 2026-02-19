@@ -425,27 +425,19 @@ async function onchainCheckin() {
 
   try {
     await ensureBaseChain();
-    const txHash = await state.provider.request({
-      method: "eth_sendTransaction",
-      params: [
-        {
-          from: state.address,
-          to: state.address,
-          value: "0x0",
-          data: "0x67626c5f636865636b696e"
-        }
-      ]
-    });
+    const txRef = await submitCheckinTransaction();
+    const txHash = /^0x[a-fA-F0-9]{64}$/.test(String(txRef)) ? String(txRef) : "";
 
     const result = await apiPost("/api/checkin", {
       address: state.address,
-      txHash
+      txHash,
+      txRef: String(txRef)
     });
 
     if (result.ok) {
       state.profile = result.profile;
       refreshProfileUI();
-      els.menuHint.textContent = `Check-in confirmed (${shortHash(txHash)})`;
+      els.menuHint.textContent = `Check-in confirmed (${shortHash(String(txRef))})`;
     } else if (result.reason === "ALREADY_CHECKED_IN") {
       els.menuHint.textContent = "Today check-in already completed";
       state.profile = result.profile;
@@ -455,6 +447,39 @@ async function onchainCheckin() {
     }
   } catch {
     els.menuHint.textContent = "Onchain check-in canceled or failed";
+  }
+}
+
+async function submitCheckinTransaction() {
+  const call = {
+    to: state.address,
+    value: "0x0",
+    data: "0x67626c5f636865636b696e"
+  };
+
+  try {
+    const result = await state.provider.request({
+      method: "wallet_sendCalls",
+      params: [
+        {
+          version: "2.0.0",
+          chainId: "0x2105",
+          from: state.address,
+          atomicRequired: false,
+          calls: [call]
+        }
+      ]
+    });
+
+    if (typeof result === "string") return result;
+    if (result?.transactionHash) return result.transactionHash;
+    if (result?.id) return result.id;
+    return JSON.stringify(result);
+  } catch {
+    return state.provider.request({
+      method: "eth_sendTransaction",
+      params: [{ from: state.address, ...call }]
+    });
   }
 }
 

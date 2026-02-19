@@ -8,13 +8,14 @@ module.exports = async function handler(req, res) {
   const body = parseBody(req);
   const address = String(body.address ?? "").toLowerCase();
   const txHash = String(body.txHash ?? "");
+  const txRef = String(body.txRef ?? txHash ?? "");
 
   if (!isValidAddress(address)) {
     return sendJson(res, 400, { error: "Invalid address" });
   }
 
-  if (!/^0x([a-fA-F0-9]{64})$/.test(txHash)) {
-    return sendJson(res, 400, { error: "Invalid tx hash" });
+  if (!txRef || txRef.length > 200) {
+    return sendJson(res, 400, { error: "Invalid tx reference" });
   }
 
   const profile = await loadProfile(address);
@@ -27,6 +28,7 @@ module.exports = async function handler(req, res) {
   profile.checkins += 1;
   profile.lastCheckinDay = today;
   profile.lastCheckinTx = txHash;
+  profile.lastCheckinRef = txRef;
 
   const saved = await saveProfile(profile);
   return sendJson(res, 200, { ok: true, profile: saved });

@@ -14,6 +14,7 @@ const DEFAULT_PROFILE = {
   checkins: 0,
   lastCheckinDay: "",
   lastCheckinTx: "",
+  lastCheckinRef: "",
   lastSpinAt: 0,
   lastSpinReward: 0,
   lastSpinSymbols: [7, 7, 7],
