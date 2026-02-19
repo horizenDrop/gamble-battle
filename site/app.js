@@ -556,16 +556,17 @@ function getWinner(board) {
 }
 
 async function onchainCheckin() {
-  if (!state.address || !state.provider || state.checkinInFlight) return;
+  if (!state.address || state.checkinInFlight) return;
+  if (!state.provider) {
+    state.provider = await getProvider();
+  }
+  if (!state.provider) return;
+
   state.checkinInFlight = true;
   els.checkinBtn.disabled = true;
 
   try {
     await syncProfile();
-    if (isAlreadyCheckedInToday(state.profile?.lastCheckinDay)) {
-      return;
-    }
-
     const chainId = await ensureBaseChain();
     const txRef = await submitCheckinTransaction(chainId);
     const txHash = /^0x[a-fA-F0-9]{64}$/.test(String(txRef)) ? String(txRef) : "";
@@ -667,7 +668,7 @@ function renderLeaderboard() {
         <div class="lb-rank">#${index + 1}</div>
         <div>
           <div class="lb-name">${escapeHtml(nick)}</div>
-          <div class="lb-meta">${shortAddress(row.evmAddress || row.address)} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)}</div>
+          <div class="lb-meta">${shortAddress(row.evmAddress || row.address)} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)} | Check-ins ${Number(row.checkins ?? 0)}</div>
         </div>
         <div class="lb-rank">${Number(row.balance ?? 0)} coins</div>
       </div>`;
@@ -717,10 +718,8 @@ async function submitCheckinTransaction(chainId) {
   for (const req of attempts) {
     try {
       const result = await state.provider.request(req);
-      if (typeof result === "string") return result;
-      if (result?.transactionHash) return result.transactionHash;
-      if (result?.id) return result.id;
-      if (result) return JSON.stringify(result);
+      const ref = extractTxReference(result);
+      if (ref) return ref;
     } catch (error) {
       if (isUserRejected(error)) {
         throw error;
@@ -732,8 +731,20 @@ async function submitCheckinTransaction(chainId) {
   throw new Error(lastError?.message ?? "check-in transaction failed");
 }
 
-function isAlreadyCheckedInToday(lastCheckinDay) {
-  return String(lastCheckinDay ?? "") === new Date().toISOString().slice(0, 10);
+function extractTxReference(result) {
+  if (typeof result === "string") {
+    return String(result).slice(0, 180);
+  }
+  if (result?.transactionHash) {
+    return String(result.transactionHash).slice(0, 180);
+  }
+  if (result?.id) {
+    return String(result.id).slice(0, 180);
+  }
+  if (Array.isArray(result) && result.length > 0) {
+    return String(result[0]).slice(0, 180);
+  }
+  return `checkin-${Date.now()}`;
 }
 
 function isUserRejected(error) {
