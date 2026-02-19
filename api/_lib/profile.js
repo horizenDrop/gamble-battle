@@ -112,6 +112,30 @@ async function listProfiles(limit = 20) {
   return entries.slice(0, Math.max(1, Math.min(100, Number(limit) || 20)));
 }
 
+async function findProfileByNickname(nickname) {
+  const target = sanitizeNickname(nickname).toLowerCase();
+  if (!target) return null;
+
+  const raw = await getValue(PROFILE_INDEX_KEY);
+  if (!raw) return null;
+
+  let index;
+  try {
+    index = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  for (const row of Object.values(index ?? {})) {
+    const current = sanitizeNickname(row?.nickname ?? "").toLowerCase();
+    if (current && current === target) {
+      return row;
+    }
+  }
+
+  return null;
+}
+
 async function upsertProfileIndex(profile) {
   let index = {};
   const raw = await getValue(PROFILE_INDEX_KEY);
@@ -175,6 +199,7 @@ module.exports = {
   loadProfile,
   saveProfile,
   listProfiles,
+  findProfileByNickname,
   todayKey,
   parseBody,
   sendJson,

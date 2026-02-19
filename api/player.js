@@ -1,4 +1,4 @@
-﻿const { isValidAddress, loadProfile, saveProfile, normalizeAddress, parseBody, sendJson, sanitizeNickname } = require("./_lib/profile");
+﻿const { isValidAddress, loadProfile, saveProfile, normalizeAddress, parseBody, sendJson, sanitizeNickname, findProfileByNickname } = require("./_lib/profile");
 
 module.exports = async function handler(req, res) {
   if (req.method === "GET") {
@@ -26,6 +26,15 @@ module.exports = async function handler(req, res) {
     }
 
     const profile = await loadProfile(address);
+    if (profile.nickname) {
+      return sendJson(res, 200, { ok: false, reason: "NICKNAME_LOCKED", profile });
+    }
+
+    const existing = await findProfileByNickname(nickname);
+    if (existing && normalizeAddress(existing.address) !== address) {
+      return sendJson(res, 200, { ok: false, reason: "NICKNAME_TAKEN" });
+    }
+
     profile.nickname = nickname;
     const saved = await saveProfile(profile);
     return sendJson(res, 200, { ok: true, profile: saved });

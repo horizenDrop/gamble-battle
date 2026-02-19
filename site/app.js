@@ -30,7 +30,7 @@ const els = {
   pveWinRate: byId("pve-winrate"),
   pvpWinRate: byId("pvp-winrate"),
   checkins: byId("checkins"),
-  menuHint: byId("menu-hint"),
+  menuStatus: byId("menu-status"),
   spinResult: byId("spin-result"),
   spinCooldown: byId("spin-cooldown"),
   matchResult: byId("match-result"),
@@ -141,6 +141,7 @@ async function onWalletConnected(address) {
   state.profile = response.profile;
   els.nicknameInput.value = state.profile.nickname ?? "";
   refreshProfileUI();
+  setMenuStatus(state.profile.nickname ? "Nickname locked. Choose your next action." : "Set nickname once, then play.");
   setScreen("menu");
 }
 
@@ -249,7 +250,7 @@ async function startBattle(mode) {
 
   if (!start.ok) {
     if (start.reason === "NOT_ENOUGH_COINS") {
-      els.menuHint.textContent = "Not enough coins for PvP";
+      setMenuStatus("Not enough coins for PvP");
       state.profile = start.profile;
       refreshProfileUI();
     }
@@ -451,16 +452,16 @@ async function onchainCheckin() {
     if (result.ok) {
       state.profile = result.profile;
       refreshProfileUI();
-      els.menuHint.textContent = `Check-in confirmed (${shortHash(String(txRef))})`;
+      setMenuStatus(`Check-in confirmed (${shortHash(String(txRef))})`);
     } else if (result.reason === "ALREADY_CHECKED_IN") {
-      els.menuHint.textContent = "Today check-in already completed";
+      setMenuStatus("Today check-in already completed");
       state.profile = result.profile;
       refreshProfileUI();
     } else {
-      els.menuHint.textContent = "Check-in failed";
+      setMenuStatus("Check-in failed");
     }
   } catch {
-    els.menuHint.textContent = "Onchain check-in canceled or failed";
+    setMenuStatus("Onchain check-in canceled or failed");
   }
 }
 
@@ -468,7 +469,7 @@ async function saveNickname() {
   if (!state.address) return;
   const nickname = String(els.nicknameInput.value ?? "").trim();
   if (nickname.length < 2) {
-    els.menuHint.textContent = "Nickname must be at least 2 chars";
+    setMenuStatus("Nickname must be at least 2 chars");
     return;
   }
 
@@ -477,11 +478,26 @@ async function saveNickname() {
       address: state.address,
       nickname
     });
+    if (!result.ok) {
+      if (result.reason === "NICKNAME_LOCKED") {
+        state.profile = result.profile ?? state.profile;
+        refreshProfileUI();
+        setMenuStatus("Nickname already locked for this wallet");
+        return;
+      }
+      if (result.reason === "NICKNAME_TAKEN") {
+        setMenuStatus("Nickname already taken");
+        return;
+      }
+      setMenuStatus("Failed to save nickname");
+      return;
+    }
+
     state.profile = result.profile;
     refreshProfileUI();
-    els.menuHint.textContent = "Nickname saved";
+    setMenuStatus("Nickname saved and locked");
   } catch {
-    els.menuHint.textContent = "Failed to save nickname";
+    setMenuStatus("Failed to save nickname");
   }
 }
 
@@ -492,7 +508,7 @@ async function openLeaderboard() {
     renderLeaderboard();
     setScreen("leaderboard");
   } catch {
-    els.menuHint.textContent = "Failed to load leaderboard";
+    setMenuStatus("Failed to load leaderboard");
   }
 }
 
@@ -586,8 +602,25 @@ function refreshProfileUI() {
   els.checkins.textContent = String(profile.checkins ?? 0);
   refreshPveScore();
   refreshFirstTurnButtons();
-  els.menuHint.textContent = "Ready";
+  applyNicknameLock(profile.nickname);
   updateCooldown();
+}
+
+function applyNicknameLock(nickname) {
+  const locked = Boolean(String(nickname ?? "").trim());
+  els.nicknameInput.disabled = locked;
+  els.saveNicknameBtn.disabled = locked;
+  if (locked) {
+    els.saveNicknameBtn.textContent = "Locked";
+    els.nicknameInput.title = "Nickname is permanent for this wallet";
+  } else {
+    els.saveNicknameBtn.textContent = "Save";
+    els.nicknameInput.title = "";
+  }
+}
+
+function setMenuStatus(message) {
+  els.menuStatus.textContent = `Status: ${message}`;
 }
 
 async function getProvider() {
