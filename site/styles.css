@@ -105,6 +105,29 @@ body {
   font-size: 0.9rem;
 }
 
+.wallet-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 6px auto 2px;
+  border: 1px solid #8f703f;
+  border-radius: 999px;
+  background: #fff8ea;
+}
+
+.wallet-nick {
+  font-weight: 700;
+  font-size: 0.98rem;
+}
+
+.wallet-addr {
+  color: #5f4a26;
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+}
+
 .nickname-row {
   display: grid;
   grid-template-columns: 1fr auto;

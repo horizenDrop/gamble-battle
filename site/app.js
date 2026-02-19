@@ -23,6 +23,7 @@ const els = {
   nicknameInput: byId("nickname-input"),
   saveNicknameBtn: byId("save-nickname-btn"),
   nicknameStatus: byId("nickname-status"),
+  menuNickname: byId("menu-nickname"),
   menuAddress: byId("menu-address"),
   coins: byId("coins"),
   wins: byId("wins"),
@@ -462,7 +463,6 @@ async function onchainCheckin() {
   if (!state.address || !state.provider) return;
 
   try {
-    setStatus("Awaiting wallet confirmation for check-in");
     const chainId = await ensureBaseChain();
     const txRef = await submitCheckinTransaction(chainId);
     const txHash = /^0x[a-fA-F0-9]{64}$/.test(String(txRef)) ? String(txRef) : "";
@@ -477,7 +477,6 @@ async function onchainCheckin() {
     if (result.ok) {
       state.profile = result.profile;
       refreshProfileUI();
-      setStatus(`Check-in confirmed (${shortHash(String(txRef))})`);
       trackEvent("checkin_success");
       return;
     }
@@ -485,7 +484,6 @@ async function onchainCheckin() {
     if (result.reason === "ALREADY_CHECKED_IN") {
       state.profile = result.profile;
       refreshProfileUI();
-      setStatus("Today check-in already completed");
       return;
     }
 
@@ -665,7 +663,8 @@ function refreshProfileUI() {
   const profile = state.profile;
   if (!profile) return;
 
-  els.menuAddress.textContent = `Wallet: ${shortAddress(profile.evmAddress || profile.address)} (${displayName(profile)})`;
+  els.menuNickname.textContent = displayName(profile);
+  els.menuAddress.textContent = shortAddress(profile.evmAddress || profile.address);
   els.coins.textContent = String(profile.balance ?? 0);
   els.wins.textContent = String(profile.wins ?? 0);
   els.losses.textContent = String(profile.losses ?? 0);
