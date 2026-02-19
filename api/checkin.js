@@ -9,6 +9,7 @@ module.exports = async function handler(req, res) {
   const address = String(body.address ?? "").toLowerCase();
   const txHash = String(body.txHash ?? "");
   const txRef = String(body.txRef ?? txHash ?? "");
+  const chainId = String(body.chainId ?? "");
 
   if (!isValidAddress(address)) {
     return sendJson(res, 400, { error: "Invalid address" });
@@ -28,7 +29,7 @@ module.exports = async function handler(req, res) {
   profile.checkins += 1;
   profile.lastCheckinDay = today;
   profile.lastCheckinTx = txHash;
-  profile.lastCheckinRef = txRef;
+  profile.lastCheckinRef = chainId ? `${chainId}:${txRef}` : txRef;
 
   const saved = await saveProfile(profile);
   return sendJson(res, 200, { ok: true, profile: saved });

@@ -463,14 +463,15 @@ async function onchainCheckin() {
 
   try {
     setStatus("Awaiting wallet confirmation for check-in");
-    await ensureBaseChain();
-    const txRef = await submitCheckinTransaction();
+    const chainId = await ensureBaseChain();
+    const txRef = await submitCheckinTransaction(chainId);
     const txHash = /^0x[a-fA-F0-9]{64}$/.test(String(txRef)) ? String(txRef) : "";
 
     const result = await apiPost("/api/checkin", {
       address: state.address,
       txHash,
-      txRef: String(txRef)
+      txRef: String(txRef),
+      chainId
     });
 
     if (result.ok) {
@@ -490,7 +491,12 @@ async function onchainCheckin() {
 
     setStatus("Check-in failed");
   } catch (error) {
-    setStatus(error?.message?.includes("insufficient") ? "Check-in failed: insufficient gas funds" : "Onchain check-in canceled or failed");
+    const message = String(error?.message ?? "").toLowerCase();
+    if (message.includes("insufficient")) {
+      setStatus("Check-in failed: wallet reports insufficient gas funds");
+      return;
+    }
+    setStatus("Onchain check-in canceled or failed");
   }
 }
 
@@ -570,52 +576,43 @@ function renderLeaderboard() {
     .join("");
 }
 
-async function submitCheckinTransaction() {
+async function submitCheckinTransaction(chainId) {
+  const paymasterUrl = await getPaymasterUrl();
   const call = {
     to: state.address,
-    value: "0x0",
-    data: "0x67626c5f636865636b696e"
+    value: "0x0"
   };
 
   const payload = {
     version: "2.0.0",
-    chainId: "0x2105",
+    chainId,
     from: state.address,
     atomicRequired: false,
     calls: [call]
   };
 
-  const attempts = [
-    {
+  const attempts = [];
+  if (paymasterUrl) {
+    attempts.push({
       method: "wallet_sendCalls",
       params: [
         {
           ...payload,
           capabilities: {
-            dataSuffix: {
-              value: "0x67626c5f636865636b696e",
+            paymasterService: {
+              url: paymasterUrl,
               optional: true
             }
           }
         }
       ]
-    },
-    {
-      method: "wallet_sendCalls",
-      params: [
-        {
-          ...payload,
-          capabilities: {
-            dataSuffix: "0x67626c5f636865636b696e"
-          }
-        }
-      ]
-    },
-    {
-      method: "wallet_sendCalls",
-      params: [payload]
-    }
-  ];
+    });
+  }
+  attempts.push({ method: "wallet_sendCalls", params: [payload] });
+  attempts.push({
+    method: "eth_sendTransaction",
+    params: [{ from: state.address, ...call }]
+  });
 
   let lastError = null;
   for (const req of attempts) {
@@ -630,26 +627,27 @@ async function submitCheckinTransaction() {
     }
   }
 
-  try {
-    const txHash = await state.provider.request({
-      method: "eth_sendTransaction",
-      params: [{ from: state.address, ...call }]
-    });
-    return txHash;
-  } catch (fallbackError) {
-    const message = fallbackError?.message ?? lastError?.message ?? "check-in transaction failed";
-    throw new Error(message);
-  }
+  throw new Error(lastError?.message ?? "check-in transaction failed");
 }
 
 async function ensureBaseChain() {
   const chainId = await state.provider.request({ method: "eth_chainId" });
-  if (String(chainId).toLowerCase() === "0x2105") return;
+  if (String(chainId).toLowerCase() === "0x2105") return "0x2105";
 
   await state.provider.request({
     method: "wallet_switchEthereumChain",
     params: [{ chainId: "0x2105" }]
   });
+  return "0x2105";
+}
+
+async function getPaymasterUrl() {
+  try {
+    const config = await apiGet("/api/checkin-config");
+    return String(config?.paymasterUrl ?? "").trim();
+  } catch {
+    return "";
+  }
 }
 
 function refreshPveScore() {
