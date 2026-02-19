@@ -16,7 +16,8 @@ const state = {
   pveFirstMover: "player",
   playerTurn: true,
   leaderboardRows: [],
-  pvpPollId: null
+  pvpPollId: null,
+  checkinInFlight: false
 };
 
 const els = {
@@ -555,9 +556,16 @@ function getWinner(board) {
 }
 
 async function onchainCheckin() {
-  if (!state.address || !state.provider) return;
+  if (!state.address || !state.provider || state.checkinInFlight) return;
+  state.checkinInFlight = true;
+  els.checkinBtn.disabled = true;
 
   try {
+    await syncProfile();
+    if (isAlreadyCheckedInToday(state.profile?.lastCheckinDay)) {
+      return;
+    }
+
     const chainId = await ensureBaseChain();
     const txRef = await submitCheckinTransaction(chainId);
     const txHash = /^0x[a-fA-F0-9]{64}$/.test(String(txRef)) ? String(txRef) : "";
@@ -570,23 +578,26 @@ async function onchainCheckin() {
     });
 
     if (result.ok) {
-      state.profile = result.profile;
-      refreshProfileUI();
+      await syncProfile();
       trackEvent("checkin_success");
       return;
     }
 
     if (result.reason === "ALREADY_CHECKED_IN") {
-      state.profile = result.profile;
+      state.profile = result.profile ?? state.profile;
       refreshProfileUI();
       return;
     }
 
   } catch (error) {
-    const message = String(error?.message ?? "").toLowerCase();
-    if (message.includes("insufficient")) {
+    if (isUserRejected(error)) {
       return;
     }
+    const message = String(error?.message ?? "").toLowerCase();
+    if (message.includes("insufficient")) return;
+  } finally {
+    state.checkinInFlight = false;
+    els.checkinBtn.disabled = false;
   }
 }
 
@@ -711,11 +722,25 @@ async function submitCheckinTransaction(chainId) {
       if (result?.id) return result.id;
       if (result) return JSON.stringify(result);
     } catch (error) {
+      if (isUserRejected(error)) {
+        throw error;
+      }
       lastError = error;
     }
   }
 
   throw new Error(lastError?.message ?? "check-in transaction failed");
+}
+
+function isAlreadyCheckedInToday(lastCheckinDay) {
+  return String(lastCheckinDay ?? "") === new Date().toISOString().slice(0, 10);
+}
+
+function isUserRejected(error) {
+  const code = Number(error?.code);
+  if (code === 4001) return true;
+  const message = String(error?.message ?? "").toLowerCase();
+  return message.includes("user rejected") || message.includes("rejected the request") || message.includes("denied");
 }
 
 async function ensureBaseChain() {
