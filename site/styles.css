@@ -89,42 +89,60 @@ body {
 .coins-box span { display: block; font-size: 0.95rem; }
 .coins-box strong { font-family: "Cinzel", serif; font-size: 2rem; line-height: 1; }
 
-.stats-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin: 12px 0 14px;
-}
-
-.stat-pill {
-  border: 1px solid #7d6030;
-  background: #fff7e7;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.9rem;
-}
-
-.wallet-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 6px 12px;
-  margin: 6px auto 2px;
+.profile-compact {
+  margin: 10px 0 14px;
   border: 1px solid #8f703f;
-  border-radius: 999px;
+  border-radius: 14px;
   background: #fff8ea;
+  padding: 10px;
+}
+
+.identity-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dec391;
+}
+
+.stats-compact {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stat-card {
+  display: grid;
+  gap: 2px;
+  border: 1px solid #d1b27b;
+  border-radius: 10px;
+  background: #fff3d8;
+  padding: 6px 8px;
+}
+
+.stat-card span {
+  font-size: 0.74rem;
+  color: #5f4a26;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-card strong {
+  font-family: "Cinzel", serif;
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .wallet-nick {
   font-weight: 700;
-  font-size: 0.98rem;
+  font-size: 1rem;
 }
 
 .wallet-addr {
   color: #5f4a26;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   letter-spacing: 0.02em;
 }
 
@@ -280,4 +298,5 @@ h2 { margin: 0; font-family: "Cinzel", serif; }
 @media (max-width: 600px) {
   .menu-grid.fluid { grid-template-columns: 1fr; }
   .brand { font-size: 2.35rem; }
+  .stats-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

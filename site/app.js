@@ -33,7 +33,6 @@ const els = {
   pveWinRate: byId("pve-winrate"),
   pvpWinRate: byId("pvp-winrate"),
   checkins: byId("checkins"),
-  menuStatus: byId("menu-status"),
   spinResult: byId("spin-result"),
   spinCooldown: byId("spin-cooldown"),
   matchResult: byId("match-result"),
@@ -790,17 +789,11 @@ async function syncProfile() {
 async function verifyDbStatus() {
   try {
     const db = await apiGet("/api/db-status");
-    if (!db.ok) {
-      setStatus("DB issue detected. Check Redis config.");
-      return;
+    if (!db.ok || db.mode === "memory") {
+      trackEvent("db_not_persistent");
     }
-    if (db.mode === "memory") {
-      setStatus("DB mode: memory (configure Redis for persistent state)");
-      return;
-    }
-    setStatus("DB mode: Redis connected");
   } catch {
-    setStatus("DB status unavailable");
+    // silent in production UI
   }
 }
 
@@ -834,7 +827,7 @@ async function apiPost(url, body) {
 }
 
 function setStatus(message) {
-  els.menuStatus.textContent = `Status: ${message}`;
+  void message;
 }
 
 function applySafeArea(insets) {

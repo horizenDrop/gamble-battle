@@ -49,18 +49,19 @@
           </div>
         </header>
 
-        <div class="wallet-chip">
-          <span id="menu-nickname" class="wallet-nick">Anonymous</span>
-          <span id="menu-address" class="wallet-addr">0x...</span>
-        </div>
-
-        <div class="stats-row">
-          <span class="stat-pill">W <strong id="wins">0</strong></span>
-          <span class="stat-pill">L <strong id="losses">0</strong></span>
-          <span class="stat-pill">D <strong id="draws">0</strong></span>
-          <span class="stat-pill">PvE WR <strong id="pve-winrate">0%</strong></span>
-          <span class="stat-pill">PvP WR <strong id="pvp-winrate">0%</strong></span>
-          <span class="stat-pill">Check-ins <strong id="checkins">0</strong></span>
+        <div class="profile-compact">
+          <div class="identity-line">
+            <span id="menu-nickname" class="wallet-nick">Anonymous</span>
+            <span id="menu-address" class="wallet-addr">0x...</span>
+          </div>
+          <div class="stats-compact">
+            <div class="stat-card"><span>Wins</span><strong id="wins">0</strong></div>
+            <div class="stat-card"><span>Losses</span><strong id="losses">0</strong></div>
+            <div class="stat-card"><span>Draws</span><strong id="draws">0</strong></div>
+            <div class="stat-card"><span>PvE WR</span><strong id="pve-winrate">0%</strong></div>
+            <div class="stat-card"><span>PvP WR</span><strong id="pvp-winrate">0%</strong></div>
+            <div class="stat-card"><span>Check-ins</span><strong id="checkins">0</strong></div>
+          </div>
         </div>
 
         <div class="menu-grid fluid">
@@ -70,8 +71,6 @@
           <button id="leaderboard-btn" class="btn btn-ink" type="button">Leaderboard</button>
           <button id="checkin-btn" class="btn btn-ink" type="button">Onchain Check-in</button>
         </div>
-
-        <p id="menu-status" class="tiny center">Status: Choose action</p>
       </article>
     </section>
 
