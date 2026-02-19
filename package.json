@@ -2,17 +2,10 @@
   "name": "gamble-battle",
   "private": true,
   "version": "0.1.0",
-  "workspaces": [
-    "apps/*"
-  ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present && node scripts/generate-public.mjs",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "build": "node scripts/generate-public.mjs"
   },
   "dependencies": {
     "redis": "^4.7.1"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.2"
   }
 }
