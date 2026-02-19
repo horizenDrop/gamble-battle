@@ -15,43 +15,55 @@
 </head>
 <body>
   <main class="app-shell">
-    <header class="topbar">
+    <header class="topbar panel">
       <h1>Gamble Battle</h1>
       <p id="miniapp-status">Mini App status: initializing...</p>
+      <p id="context-info">Context: unavailable</p>
     </header>
 
-    <section class="panel">
-      <h2>Wallet</h2>
+    <section id="screen-wallet" class="panel screen active">
+      <h2>Connect Wallet</h2>
+      <p>Подключите кошелек, чтобы открыть игру.</p>
       <button id="connect-btn" type="button">Connect Wallet</button>
       <p id="wallet-address">Address: not connected</p>
-      <p id="context-info">Context: unavailable</p>
     </section>
 
-    <section class="panel">
-      <h2>Hourly Spin</h2>
-      <button id="spin-btn" type="button">Spin</button>
+    <section id="screen-menu" class="panel screen">
+      <h2>Main Menu</h2>
+      <div class="menu-line">
+        <span id="menu-address">Wallet: -</span>
+        <strong id="coins">Coins: 0</strong>
+      </div>
+
+      <div class="slot-machine">
+        <div class="reel" id="reel-0">1</div>
+        <div class="reel" id="reel-1">1</div>
+        <div class="reel" id="reel-2">1</div>
+      </div>
+
+      <button id="spin-btn" type="button">SPIN</button>
       <p id="spin-result">Spin result: waiting</p>
       <p id="spin-cooldown">Cooldown: ready</p>
-    </section>
 
-    <section class="panel">
-      <h2>Tic-Tac-Toe vs Bot</h2>
-      <div id="board" class="board" aria-label="tic tac toe board"></div>
-      <p id="match-result">Match: in progress</p>
-      <button id="reset-match" type="button">New Match</button>
-    </section>
-
-    <section class="panel">
-      <h2>Mini App Actions</h2>
       <div class="actions">
-        <button id="signin-btn" type="button">Sign In</button>
+        <button id="pve-btn" type="button">PvE (Training)</button>
+        <button id="pvp-btn" type="button">PvP</button>
         <button id="open-rules-btn" type="button">Open Rules</button>
       </div>
-      <p id="action-result">Actions: idle</p>
+    </section>
+
+    <section id="screen-battle" class="panel screen">
+      <h2 id="battle-title">Battle</h2>
+      <p id="battle-subtitle">Mode: -</p>
+      <div id="board" class="board" aria-label="tic tac toe board"></div>
+      <p id="match-result">Match: in progress</p>
+      <div class="actions">
+        <button id="reset-match" type="button">New Match</button>
+        <button id="back-menu" type="button">Back To Menu</button>
+      </div>
     </section>
   </main>
 
   <script type="module" src="/app.js"></script>
 </body>
 </html>
-

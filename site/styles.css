@@ -1,9 +1,10 @@
 ﻿:root {
-  --bg: #0a1220;
-  --panel: #121f34;
+  --bg: #081224;
+  --panel: #111d32;
   --text: #e7f0ff;
-  --muted: #9fb4d6;
-  --accent: #39d0ff;
+  --muted: #a2b6d8;
+  --accent: #35d4ff;
+  --warn: #ffcc66;
   --safe-top: 0px;
   --safe-right: 0px;
   --safe-bottom: 0px;
@@ -15,7 +16,7 @@
 body {
   margin: 0;
   color: var(--text);
-  background: radial-gradient(circle at top, #142543 0%, var(--bg) 60%);
+  background: radial-gradient(circle at 10% 10%, #18315a 0%, var(--bg) 45%, #050a16 100%);
   font-family: "Segoe UI", Tahoma, sans-serif;
 }
 
@@ -28,18 +29,21 @@ body {
   margin: 0 auto;
 }
 
-.topbar h1 { margin: 0 0 6px; }
-.topbar p { margin: 0; color: var(--muted); }
-
 .panel {
-  background: color-mix(in srgb, var(--panel), black 12%);
+  background: color-mix(in srgb, var(--panel), black 10%);
   border: 1px solid color-mix(in srgb, var(--accent), transparent 75%);
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: 14px;
+  padding: 14px;
 }
 
-.panel h2 { margin: 0 0 10px; font-size: 1.05rem; }
-.panel p { margin: 8px 0 0; color: var(--muted); }
+.topbar h1 { margin: 0 0 6px; }
+.topbar p { margin: 4px 0 0; color: var(--muted); }
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+h2 { margin: 0 0 10px; }
+p { margin: 8px 0 0; color: var(--muted); }
 
 button {
   border: 0;
@@ -51,16 +55,51 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.menu-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.slot-machine {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.reel {
+  background: #071223;
+  border: 1px solid #2d4f80;
+  border-radius: 12px;
+  min-height: 80px;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--warn);
+  text-shadow: 0 0 12px rgba(255, 204, 102, 0.35);
+}
+
 .actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: 10px;
 }
 
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  margin: 8px 0 4px;
 }
 
 .cell {
