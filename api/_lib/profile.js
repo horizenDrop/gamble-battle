@@ -9,6 +9,8 @@ const DEFAULT_PROFILE = {
   totalGames: 0,
   pveGames: 0,
   pvpGames: 0,
+  pvePlayerWins: 0,
+  pveBotWins: 0,
   checkins: 0,
   lastCheckinDay: "",
   lastCheckinTx: "",

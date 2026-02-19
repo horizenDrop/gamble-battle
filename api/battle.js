@@ -48,6 +48,11 @@ module.exports = async function handler(req, res) {
     if (outcome === "loss") profile.losses += 1;
     if (outcome === "draw") profile.draws += 1;
 
+    if (mode === "pve") {
+      if (outcome === "win") profile.pvePlayerWins += 1;
+      if (outcome === "loss") profile.pveBotWins += 1;
+    }
+
     if (mode === "pvp") {
       if (outcome === "win") profile.balance += PVP_ENTRY_COST * 2;
       if (outcome === "draw") profile.balance += PVP_ENTRY_COST;

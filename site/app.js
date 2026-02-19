@@ -12,7 +12,9 @@ const state = {
   spinning: false,
   board: Array(9).fill(null),
   finished: false,
-  mode: "pve"
+  mode: "pve",
+  pveFirstMover: "player",
+  playerTurn: true
 };
 
 const els = {
@@ -29,6 +31,8 @@ const els = {
   matchResult: byId("match-result"),
   battleTitle: byId("battle-title"),
   battleSubtitle: byId("battle-subtitle"),
+  pveControls: byId("pve-controls"),
+  pveScore: byId("pve-score"),
   board: byId("board"),
   connectBtn: byId("connect-btn"),
   openSlotBtn: byId("open-slot-btn"),
@@ -36,6 +40,8 @@ const els = {
   slotBackBtn: byId("slot-back-btn"),
   pveBtn: byId("pve-btn"),
   pvpBtn: byId("pvp-btn"),
+  pveFirstPlayerBtn: byId("pve-first-player"),
+  pveFirstBotBtn: byId("pve-first-bot"),
   checkinBtn: byId("checkin-btn"),
   resetBtn: byId("reset-match"),
   backMenuBtn: byId("back-menu"),
@@ -75,6 +81,8 @@ function wireEvents() {
   els.spinBtn.addEventListener("click", spinInteractive);
   els.pveBtn.addEventListener("click", () => startBattle("pve"));
   els.pvpBtn.addEventListener("click", () => startBattle("pvp"));
+  els.pveFirstPlayerBtn.addEventListener("click", () => setPveFirstMover("player"));
+  els.pveFirstBotBtn.addEventListener("click", () => setPveFirstMover("bot"));
   els.checkinBtn.addEventListener("click", onchainCheckin);
   els.resetBtn.addEventListener("click", resetMatch);
   els.backMenuBtn.addEventListener("click", () => setScreen("menu"));
@@ -128,6 +136,14 @@ function setScreen(name) {
   els.screenMenu.classList.toggle("active", name === "menu");
   els.screenSlot.classList.toggle("active", name === "slot");
   els.screenBattle.classList.toggle("active", name === "battle");
+}
+
+function setPveFirstMover(next) {
+  state.pveFirstMover = next === "bot" ? "bot" : "player";
+  refreshFirstTurnButtons();
+  if (state.mode === "pve") {
+    els.battleSubtitle.textContent = state.pveFirstMover === "bot" ? "Bot moves first." : "You move first.";
+  }
 }
 
 async function spinInteractive() {
@@ -230,9 +246,17 @@ async function startBattle(mode) {
   refreshProfileUI();
 
   state.mode = mode;
-  resetMatch();
-  els.battleTitle.textContent = mode === "pve" ? "PvE Training" : "PvP Match";
-  els.battleSubtitle.textContent = mode === "pve" ? "Practice mode. Coins are safe." : `Entry ${start.entryCost} coins`;
+  els.pveControls.style.display = mode === "pve" ? "block" : "none";
+  if (mode === "pve") {
+    els.battleTitle.textContent = "PvE Training";
+    els.battleSubtitle.textContent = state.pveFirstMover === "bot" ? "Bot moves first." : "You move first.";
+    refreshPveScore();
+    refreshFirstTurnButtons();
+  } else {
+    els.battleTitle.textContent = "PvP Match";
+    els.battleSubtitle.textContent = `Entry ${start.entryCost} coins`;
+  }
+  await resetMatch();
   setScreen("battle");
 }
 
@@ -249,9 +273,10 @@ function renderBoard() {
 }
 
 async function onPlayerMove(index) {
-  if (state.finished || state.board[index]) return;
+  if (state.finished || state.board[index] || !state.playerTurn) return;
 
   state.board[index] = "X";
+  state.playerTurn = false;
   if (await resolveWinner("X")) return;
 
   const empty = state.board.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
@@ -263,9 +288,7 @@ async function onPlayerMove(index) {
     return;
   }
 
-  const botPick = pickBotMove(state.board, empty);
-  state.board[botPick] = "O";
-  await resolveWinner("O");
+  await botTakeTurn();
   renderBoard();
 }
 
@@ -300,11 +323,40 @@ async function finishBattle(outcome) {
   }
 }
 
-function resetMatch() {
+async function botTakeTurn() {
+  const empty = state.board.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
+  if (empty.length === 0) {
+    state.finished = true;
+    els.matchResult.textContent = "Draw";
+    await finishBattle("draw");
+    return;
+  }
+
+  const botPick = pickBotMove(state.board, empty);
+  state.board[botPick] = "O";
+  const botWon = await resolveWinner("O");
+  if (botWon) return;
+
+  if (state.board.every((cell) => cell !== null)) {
+    state.finished = true;
+    els.matchResult.textContent = "Draw";
+    await finishBattle("draw");
+    return;
+  }
+
+  state.playerTurn = true;
+}
+
+async function resetMatch() {
   state.board = Array(9).fill(null);
   state.finished = false;
+  state.playerTurn = state.mode !== "pve" || state.pveFirstMover === "player";
   els.matchResult.textContent = "Match in progress";
   renderBoard();
+  if (state.mode === "pve" && state.pveFirstMover === "bot") {
+    await botTakeTurn();
+    renderBoard();
+  }
 }
 
 function pickBotMove(board, emptyCells) {
@@ -416,6 +468,17 @@ async function ensureBaseChain() {
   });
 }
 
+function refreshPveScore() {
+  const player = state.profile?.pvePlayerWins ?? 0;
+  const bot = state.profile?.pveBotWins ?? 0;
+  els.pveScore.textContent = `Score You ${player} : ${bot} Bot`;
+}
+
+function refreshFirstTurnButtons() {
+  els.pveFirstPlayerBtn.classList.toggle("selected", state.pveFirstMover === "player");
+  els.pveFirstBotBtn.classList.toggle("selected", state.pveFirstMover === "bot");
+}
+
 function refreshProfileUI() {
   const profile = state.profile;
   if (!profile) return;
@@ -425,6 +488,8 @@ function refreshProfileUI() {
   els.losses.textContent = String(profile.losses ?? 0);
   els.draws.textContent = String(profile.draws ?? 0);
   els.checkins.textContent = String(profile.checkins ?? 0);
+  refreshPveScore();
+  refreshFirstTurnButtons();
   els.menuHint.textContent = "Ready";
   updateCooldown();
 }
