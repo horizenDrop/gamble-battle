@@ -1,30 +1,39 @@
-# Gamble Battle (Base Mini App)
+# Gamble Battle App
 
-Gamble Battle is a Base Mini App game built on CORE packages.
+Игровой модуль для Base Mini App.
 
-## Core loop
-- Player spins a real slot once per hour.
-- The rolled symbols are summed into in-game currency.
-- Player can wager currency in 1v1 tic-tac-toe against bot or a real player.
+## Игровой цикл
+1. Игрок подключает кошелек.
+2. Нажимает spin (не чаще 1 раза в час).
+3. Получает награду в валюте по сумме символов слота.
+4. Запускает бой 1v1:
+- `bot` - матч против бота;
+- `pvp` - матч против другого игрока через код лобби.
+5. Победитель получает пул ставки за вычетом комиссии, профиль обновляется (score/xp/level).
 
-## Run and typecheck
-- `npm run build`
-- `npm run typecheck`
-
-## Required env
-- `GAME_NAME`
-- `MINIAPP_MANIFEST_URL`
-- `WEBHOOK_URL`
-- `CHAIN_ID_HEX`
-- `REQUIRE_WALLET` (optional, default `true`)
-
-## Main API
+## Публичный API
 - `createGambleBattle(config)`
 - `parseGambleBattleEnv(rawEnv)`
 - `mapTouchToGrid(x, y, width, height)`
 - `mapKeyboardToCell(key)`
 
-## Reused CORE modules
-- `@core/miniapp`: chain enforcement + onchain submit
-- `@core/backend`: profile progression + leaderboard model
-- `@core/gamekit`: RAF loop + buff balancing primitives
+## Основные возможности
+- Wallet-gated flow.
+- Chain switch enforcement.
+- Submit pipeline (`wallet_sendCalls` + fallback).
+- Лидерборд с сортировкой verified/best.
+- Анти-абьюз базового уровня: rate limit, валидация входных данных.
+- RAF loop и ограничения по бафам (cooldown/caps/duration).
+
+## Конфиг
+Обязательные env:
+- `GAME_NAME`
+- `MINIAPP_MANIFEST_URL`
+- `WEBHOOK_URL`
+- `CHAIN_ID_HEX`
+
+Опционально:
+- `REQUIRE_WALLET=true|false`
+
+## Примечание по проверкам
+Если `npm run typecheck` падает с ошибкой `tsc is not recognized`, установите TypeScript в окружение/проект.

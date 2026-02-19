@@ -1,21 +1,33 @@
-# Base Game CORE (Isolated)
+# Gamble Battle
 
-This repository is an isolated CORE for multiple Base Mini App games.
-It is intentionally not connected to any existing game project, data, links, names, or builder codes.
+Gamble Battle - это Base Mini App с циклом: слот раз в час -> получение внутриигровой валюты -> PvP/PvE матч 1v1 со ставкой.
 
-## Structure
-- packages/core-miniapp: Mini App runtime, wallet, chain, onchain-submit pipeline.
-- packages/core-backend: leaderboard/profile domain and storage adapters.
-- packages/core-gamekit: loop/input/progression/buff/game-balance primitives.
-- apps/gamble-battle: slot spin + 1v1 tic-tac-toe wager game.
-- docs/CORE_BLUEPRINT.md: complete implementation checklist.
+## Что внутри
+- Часовой слот с наградой по выпавшим символам.
+- Внутриигровой баланс игрока.
+- Дуэли в крестики-нолики:
+- против бота;
+- против реального игрока через lobby code.
+- Профиль игрока: XP, уровень, базовые производные статы.
+- Лидерборд по результатам матча.
+- Wallet gate и onchain submit pipeline для Base Mini App.
 
-## Design goals
-- No game-specific branding baked in.
-- Reusable modules with clear interfaces.
-- Replaceable adapters for storage, wallet specifics, and gameplay rules.
-- Ready to clone per new game without copy-paste chaos.
+## Структура проекта
+- `apps/gamble-battle` - игровая логика и публичный API игры.
+- `packages/core-miniapp` - кошелек, chain enforcement, submit транзакций.
+- `packages/core-backend` - профиль, прогрессия, лидерборд.
+- `packages/core-gamekit` - RAF loop, утилиты рантайма, баф-политики.
 
-## Prompt Workflow
-- Use `docs/GAME_CREATION_PROMPT.md` to generate a new game implementation request.
-- Validate output against `docs/CORE_BLUEPRINT.md` before accepting.
+## Запуск
+- `npm run build`
+- `npm run typecheck`
+
+## Переменные окружения
+- `GAME_NAME`
+- `MINIAPP_MANIFEST_URL`
+- `WEBHOOK_URL`
+- `CHAIN_ID_HEX`
+- `REQUIRE_WALLET` (опционально, по умолчанию `true`)
+
+## Статус
+Репозиторий приведен к одной игре Gamble Battle. Шаблонные документы и `docs` удалены.
