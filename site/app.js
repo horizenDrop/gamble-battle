@@ -564,7 +564,7 @@ function renderLeaderboard() {
           <div class="lb-name">${escapeHtml(nick)}</div>
           <div class="lb-meta">${shortAddress(row.evmAddress || row.address)} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)}</div>
         </div>
-        <div class="lb-rank">${Number(row.balance ?? 0)}</div>
+        <div class="lb-rank">${Number(row.balance ?? 0)} coins</div>
       </div>`;
     })
     .join("");
@@ -585,15 +585,61 @@ async function submitCheckinTransaction() {
     calls: [call]
   };
 
-  const result = await state.provider.request({
-    method: "wallet_sendCalls",
-    params: [payload]
-  });
+  const attempts = [
+    {
+      method: "wallet_sendCalls",
+      params: [
+        {
+          ...payload,
+          capabilities: {
+            dataSuffix: {
+              value: "0x67626c5f636865636b696e",
+              optional: true
+            }
+          }
+        }
+      ]
+    },
+    {
+      method: "wallet_sendCalls",
+      params: [
+        {
+          ...payload,
+          capabilities: {
+            dataSuffix: "0x67626c5f636865636b696e"
+          }
+        }
+      ]
+    },
+    {
+      method: "wallet_sendCalls",
+      params: [payload]
+    }
+  ];
 
-  if (typeof result === "string") return result;
-  if (result?.transactionHash) return result.transactionHash;
-  if (result?.id) return result.id;
-  return JSON.stringify(result);
+  let lastError = null;
+  for (const req of attempts) {
+    try {
+      const result = await state.provider.request(req);
+      if (typeof result === "string") return result;
+      if (result?.transactionHash) return result.transactionHash;
+      if (result?.id) return result.id;
+      if (result) return JSON.stringify(result);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  try {
+    const txHash = await state.provider.request({
+      method: "eth_sendTransaction",
+      params: [{ from: state.address, ...call }]
+    });
+    return txHash;
+  } catch (fallbackError) {
+    const message = fallbackError?.message ?? lastError?.message ?? "check-in transaction failed";
+    throw new Error(message);
+  }
 }
 
 async function ensureBaseChain() {
