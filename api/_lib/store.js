@@ -40,8 +40,22 @@ async function setValue(key, value) {
   memory.set(key, value);
 }
 
+function getStoreMode() {
+  return hasRedisConfig() ? "redis" : "memory";
+}
+
+async function pingStore() {
+  const key = `gb:ping:${Date.now()}`;
+  const value = String(Date.now());
+  await setValue(key, value);
+  const loaded = await getValue(key);
+  return loaded === value;
+}
+
 module.exports = {
   getValue,
   setValue,
-  hasRedisConfig
+  hasRedisConfig,
+  getStoreMode,
+  pingStore
 };

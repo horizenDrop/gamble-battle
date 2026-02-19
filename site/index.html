@@ -27,6 +27,18 @@
       </article>
     </section>
 
+    <section id="screen-nickname" class="screen">
+      <article class="card center-card">
+        <h1 class="brand small">Choose Nickname</h1>
+        <p class="tiny">This nickname is permanent for your wallet and must be unique.</p>
+        <div class="nickname-row">
+          <input id="nickname-input" class="nick-input" type="text" maxlength="24" placeholder="Nickname" />
+          <button id="save-nickname-btn" class="btn btn-ink" type="button">Save</button>
+        </div>
+        <p id="nickname-status" class="tiny center">Enter nickname to continue</p>
+      </article>
+    </section>
+
     <section id="screen-menu" class="screen">
       <article class="card card-menu center-card">
         <header class="menu-top">
@@ -38,11 +50,6 @@
         </header>
 
         <p id="menu-address" class="tiny center">Wallet: -</p>
-
-        <div class="nickname-row">
-          <input id="nickname-input" class="nick-input" type="text" maxlength="24" placeholder="Nickname" />
-          <button id="save-nickname-btn" class="btn btn-ink" type="button">Save</button>
-        </div>
 
         <div class="stats-row">
           <span class="stat-pill">W <strong id="wins">0</strong></span>
@@ -61,7 +68,7 @@
           <button id="checkin-btn" class="btn btn-ink" type="button">Onchain Check-in</button>
         </div>
 
-        <p id="menu-status" class="tiny center">Status: Waiting for action</p>
+        <p id="menu-status" class="tiny center">Status: Choose action</p>
       </article>
     </section>
 
@@ -73,9 +80,9 @@
         </header>
 
         <div class="slot-shell">
-          <div class="reel" id="reel-0">7</div>
-          <div class="reel" id="reel-1">7</div>
-          <div class="reel" id="reel-2">7</div>
+          <div class="reel" id="reel-0">🍒</div>
+          <div class="reel" id="reel-1">🍒</div>
+          <div class="reel" id="reel-2">🍒</div>
         </div>
 
         <button id="spin-btn" class="btn btn-gold large" type="button">Pull</button>

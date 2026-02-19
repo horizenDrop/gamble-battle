@@ -6,7 +6,7 @@ const SYMBOLS = [
   { id: "cherry", icon: "🍒", weight: 28, value: 4 },
   { id: "lemon", icon: "🍋", weight: 24, value: 5 },
   { id: "bar", icon: "🟦", weight: 20, value: 8 },
-  { id: "seven", icon: "7", weight: 16, value: 14 },
+  { id: "seven", icon: "7️⃣", weight: 16, value: 14 },
   { id: "diamond", icon: "💎", weight: 12, value: 24 }
 ];
 

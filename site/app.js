@@ -20,10 +20,11 @@ const state = {
 
 const els = {
   walletAddress: byId("wallet-address"),
-  menuAddress: byId("menu-address"),
-  coins: byId("coins"),
   nicknameInput: byId("nickname-input"),
   saveNicknameBtn: byId("save-nickname-btn"),
+  nicknameStatus: byId("nickname-status"),
+  menuAddress: byId("menu-address"),
+  coins: byId("coins"),
   wins: byId("wins"),
   losses: byId("losses"),
   draws: byId("draws"),
@@ -54,6 +55,7 @@ const els = {
   backMenuBtn: byId("back-menu"),
   reels: [byId("reel-0"), byId("reel-1"), byId("reel-2")],
   screenWallet: byId("screen-wallet"),
+  screenNickname: byId("screen-nickname"),
   screenMenu: byId("screen-menu"),
   screenSlot: byId("screen-slot"),
   screenLeaderboard: byId("screen-leaderboard"),
@@ -67,8 +69,9 @@ async function boot() {
   await setupMiniAppSDK();
   wireEvents();
   renderBoard();
-  await tryAutoConnect();
+  setStatus("Connect wallet to continue");
   setInterval(updateCooldown, 1000);
+  await tryAutoConnect();
 }
 
 async function setupMiniAppSDK() {
@@ -85,8 +88,14 @@ async function setupMiniAppSDK() {
 
 function wireEvents() {
   els.connectBtn.addEventListener("click", connectWalletInteractive);
-  els.openSlotBtn.addEventListener("click", () => setScreen("slot"));
-  els.slotBackBtn.addEventListener("click", () => setScreen("menu"));
+  els.openSlotBtn.addEventListener("click", async () => {
+    await syncProfile();
+    setScreen("slot");
+  });
+  els.slotBackBtn.addEventListener("click", async () => {
+    await syncProfile();
+    setScreen("menu");
+  });
   els.spinBtn.addEventListener("click", spinInteractive);
   els.pveBtn.addEventListener("click", () => startBattle("pve"));
   els.pvpBtn.addEventListener("click", () => startBattle("pvp"));
@@ -97,7 +106,10 @@ function wireEvents() {
   els.pveFirstBotBtn.addEventListener("click", () => setPveFirstMover("bot"));
   els.checkinBtn.addEventListener("click", onchainCheckin);
   els.resetBtn.addEventListener("click", resetMatch);
-  els.backMenuBtn.addEventListener("click", () => setScreen("menu"));
+  els.backMenuBtn.addEventListener("click", async () => {
+    await syncProfile();
+    setScreen("menu");
+  });
 }
 
 async function tryAutoConnect() {
@@ -135,18 +147,23 @@ async function connectWalletInteractive() {
 async function onWalletConnected(address) {
   state.address = String(address).toLowerCase();
   els.walletAddress.textContent = `Connected: ${shortAddress(state.address)}`;
-  els.menuAddress.textContent = `Wallet: ${shortAddress(state.address)}`;
 
-  const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}`);
-  state.profile = response.profile;
-  els.nicknameInput.value = state.profile.nickname ?? "";
-  refreshProfileUI();
-  setMenuStatus(state.profile.nickname ? "Nickname locked. Choose your next action." : "Set nickname once, then play.");
-  setScreen("menu");
+  await syncProfile();
+  const hasNickname = Boolean(String(state.profile?.nickname ?? "").trim());
+  setScreen(hasNickname ? "menu" : "nickname");
+  if (hasNickname) {
+    setStatus("Nickname locked. Choose your next action.");
+  } else {
+    els.nicknameInput.value = "";
+    els.nicknameStatus.textContent = "Choose nickname once. It cannot be changed.";
+  }
+
+  await verifyDbStatus();
 }
 
 function setScreen(name) {
   els.screenWallet.classList.toggle("active", name === "wallet");
+  els.screenNickname.classList.toggle("active", name === "nickname");
   els.screenMenu.classList.toggle("active", name === "menu");
   els.screenSlot.classList.toggle("active", name === "slot");
   els.screenLeaderboard.classList.toggle("active", name === "leaderboard");
@@ -164,38 +181,43 @@ function setPveFirstMover(next) {
 async function spinInteractive() {
   if (!state.address || state.spinning) return;
 
-  const wait = spinWaitMs();
-  if (wait > 0) {
+  await syncProfile();
+  if (spinWaitMs() > 0) {
     els.spinResult.textContent = "Cooldown active. Come back later.";
+    setStatus("Spin blocked by cooldown");
     return;
   }
 
   state.spinning = true;
-  els.spinBtn.disabled = true;
+  updateCooldown();
   els.spinResult.textContent = "Spinning...";
 
   await animateReels();
 
   const result = await apiPost("/api/spin", { address: state.address });
   if (!result.ok) {
-    els.spinResult.textContent = "Cooldown active. Come back later.";
     state.profile = result.profile;
     refreshProfileUI();
     state.spinning = false;
     updateCooldown();
+    els.spinResult.textContent = "Cooldown active. Come back later.";
+    setStatus("Spin denied by server cooldown");
     return;
   }
 
   state.profile = result.profile;
   refreshProfileUI();
 
+  const display = normalizeDisplaySymbols(result.displaySymbols?.length ? result.displaySymbols : result.symbols);
   for (let i = 0; i < els.reels.length; i += 1) {
-    els.reels[i].textContent = String(result.displaySymbols?.[i] ?? result.symbols[i]);
+    els.reels[i].textContent = String(display[i]);
   }
 
-  els.spinResult.textContent = `${result.label}  +${result.reward} coins`;
+  els.spinResult.textContent = `${result.label} +${result.reward} coins`;
+  setStatus(result.tier === "jackpot" ? `JACKPOT +${result.reward}` : `Spin complete +${result.reward}`);
   state.spinning = false;
   updateCooldown();
+  trackEvent("spin_success");
 }
 
 async function animateReels() {
@@ -206,7 +228,7 @@ async function animateReels() {
   await new Promise((resolve) => {
     const interval = setInterval(() => {
       for (let i = 0; i < els.reels.length; i += 1) {
-        els.reels[i].textContent = String(randSymbol());
+        els.reels[i].textContent = randSymbol();
       }
 
       if (Date.now() - start >= spinMs) {
@@ -218,7 +240,7 @@ async function animateReels() {
 }
 
 function spinWaitMs() {
-  const lastSpinAt = state.profile?.lastSpinAt ?? 0;
+  const lastSpinAt = Number(state.profile?.lastSpinAt ?? 0);
   if (!lastSpinAt) return 0;
   return Math.max(0, 60 * 60 * 1000 - (Date.now() - lastSpinAt));
 }
@@ -250,7 +272,7 @@ async function startBattle(mode) {
 
   if (!start.ok) {
     if (start.reason === "NOT_ENOUGH_COINS") {
-      setMenuStatus("Not enough coins for PvP");
+      setStatus("Not enough coins for PvP");
       state.profile = start.profile;
       refreshProfileUI();
     }
@@ -259,20 +281,20 @@ async function startBattle(mode) {
 
   state.profile = start.profile;
   refreshProfileUI();
-
   state.mode = mode;
+
   els.pveControls.style.display = mode === "pve" ? "block" : "none";
   if (mode === "pve") {
     els.battleTitle.textContent = "PvE Training";
     els.battleSubtitle.textContent = state.pveFirstMover === "bot" ? "Bot moves first." : "You move first.";
-    refreshPveScore();
-    refreshFirstTurnButtons();
   } else {
     els.battleTitle.textContent = "PvP Match";
     els.battleSubtitle.textContent = `Entry ${start.entryCost} coins`;
   }
+
   await resetMatch();
   setScreen("battle");
+  trackEvent(mode === "pve" ? "battle_pve_start" : "battle_pvp_start");
 }
 
 function renderBoard() {
@@ -335,6 +357,7 @@ async function finishBattle(outcome) {
   if (result.ok) {
     state.profile = result.profile;
     refreshProfileUI();
+    trackEvent(`battle_${state.mode}_${outcome}`);
   }
 }
 
@@ -439,6 +462,7 @@ async function onchainCheckin() {
   if (!state.address || !state.provider) return;
 
   try {
+    setStatus("Awaiting wallet confirmation for check-in");
     await ensureBaseChain();
     const txRef = await submitCheckinTransaction();
     const txHash = /^0x[a-fA-F0-9]{64}$/.test(String(txRef)) ? String(txRef) : "";
@@ -452,24 +476,30 @@ async function onchainCheckin() {
     if (result.ok) {
       state.profile = result.profile;
       refreshProfileUI();
-      setMenuStatus(`Check-in confirmed (${shortHash(String(txRef))})`);
-    } else if (result.reason === "ALREADY_CHECKED_IN") {
-      setMenuStatus("Today check-in already completed");
+      setStatus(`Check-in confirmed (${shortHash(String(txRef))})`);
+      trackEvent("checkin_success");
+      return;
+    }
+
+    if (result.reason === "ALREADY_CHECKED_IN") {
       state.profile = result.profile;
       refreshProfileUI();
-    } else {
-      setMenuStatus("Check-in failed");
+      setStatus("Today check-in already completed");
+      return;
     }
-  } catch {
-    setMenuStatus("Onchain check-in canceled or failed");
+
+    setStatus("Check-in failed");
+  } catch (error) {
+    setStatus(error?.message?.includes("insufficient") ? "Check-in failed: insufficient gas funds" : "Onchain check-in canceled or failed");
   }
 }
 
 async function saveNickname() {
   if (!state.address) return;
+
   const nickname = String(els.nicknameInput.value ?? "").trim();
   if (nickname.length < 2) {
-    setMenuStatus("Nickname must be at least 2 chars");
+    els.nicknameStatus.textContent = "Nickname must be at least 2 chars";
     return;
   }
 
@@ -478,26 +508,32 @@ async function saveNickname() {
       address: state.address,
       nickname
     });
+
     if (!result.ok) {
+      if (result.reason === "NICKNAME_TAKEN") {
+        els.nicknameStatus.textContent = "Nickname already taken";
+        return;
+      }
       if (result.reason === "NICKNAME_LOCKED") {
         state.profile = result.profile ?? state.profile;
         refreshProfileUI();
-        setMenuStatus("Nickname already locked for this wallet");
+        els.nicknameStatus.textContent = "Nickname already locked";
+        setScreen("menu");
         return;
       }
-      if (result.reason === "NICKNAME_TAKEN") {
-        setMenuStatus("Nickname already taken");
-        return;
-      }
-      setMenuStatus("Failed to save nickname");
+      els.nicknameStatus.textContent = "Failed to save nickname";
       return;
     }
 
     state.profile = result.profile;
     refreshProfileUI();
-    setMenuStatus("Nickname saved and locked");
+    els.nicknameInput.value = "";
+    els.nicknameStatus.textContent = "Nickname saved";
+    setScreen("menu");
+    setStatus("Nickname saved and locked");
+    trackEvent("nickname_set");
   } catch {
-    setMenuStatus("Failed to save nickname");
+    els.nicknameStatus.textContent = "Failed to save nickname";
   }
 }
 
@@ -507,8 +543,9 @@ async function openLeaderboard() {
     state.leaderboardRows = data.rows ?? [];
     renderLeaderboard();
     setScreen("leaderboard");
+    setStatus("Leaderboard updated");
   } catch {
-    setMenuStatus("Failed to load leaderboard");
+    setStatus("Failed to load leaderboard");
   }
 }
 
@@ -521,13 +558,13 @@ function renderLeaderboard() {
   els.leaderboardList.innerHTML = state.leaderboardRows
     .map((row, index) => {
       const nick = displayName(row);
-      return `<div class=\"lb-row\">
-        <div class=\"lb-rank\">#${index + 1}</div>
+      return `<div class="lb-row">
+        <div class="lb-rank">#${index + 1}</div>
         <div>
-          <div class=\"lb-name\">${escapeHtml(nick)}</div>
-          <div class=\"lb-meta\">${shortAddress(row.evmAddress || row.address)} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)}</div>
+          <div class="lb-name">${escapeHtml(nick)}</div>
+          <div class="lb-meta">${shortAddress(row.evmAddress || row.address)} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)}</div>
         </div>
-        <div class=\"lb-rank\">${Number(row.balance ?? 0)}</div>
+        <div class="lb-rank">${Number(row.balance ?? 0)}</div>
       </div>`;
     })
     .join("");
@@ -540,30 +577,23 @@ async function submitCheckinTransaction() {
     data: "0x67626c5f636865636b696e"
   };
 
-  try {
-    const result = await state.provider.request({
-      method: "wallet_sendCalls",
-      params: [
-        {
-          version: "2.0.0",
-          chainId: "0x2105",
-          from: state.address,
-          atomicRequired: false,
-          calls: [call]
-        }
-      ]
-    });
+  const payload = {
+    version: "2.0.0",
+    chainId: "0x2105",
+    from: state.address,
+    atomicRequired: false,
+    calls: [call]
+  };
 
-    if (typeof result === "string") return result;
-    if (result?.transactionHash) return result.transactionHash;
-    if (result?.id) return result.id;
-    return JSON.stringify(result);
-  } catch {
-    return state.provider.request({
-      method: "eth_sendTransaction",
-      params: [{ from: state.address, ...call }]
-    });
-  }
+  const result = await state.provider.request({
+    method: "wallet_sendCalls",
+    params: [payload]
+  });
+
+  if (typeof result === "string") return result;
+  if (result?.transactionHash) return result.transactionHash;
+  if (result?.id) return result.id;
+  return JSON.stringify(result);
 }
 
 async function ensureBaseChain() {
@@ -591,7 +621,6 @@ function refreshProfileUI() {
   const profile = state.profile;
   if (!profile) return;
 
-  els.nicknameInput.value = profile.nickname ?? "";
   els.menuAddress.textContent = `Wallet: ${shortAddress(profile.evmAddress || profile.address)} (${displayName(profile)})`;
   els.coins.textContent = String(profile.balance ?? 0);
   els.wins.textContent = String(profile.wins ?? 0);
@@ -602,25 +631,39 @@ function refreshProfileUI() {
   els.checkins.textContent = String(profile.checkins ?? 0);
   refreshPveScore();
   refreshFirstTurnButtons();
-  applyNicknameLock(profile.nickname);
   updateCooldown();
 }
 
-function applyNicknameLock(nickname) {
-  const locked = Boolean(String(nickname ?? "").trim());
-  els.nicknameInput.disabled = locked;
-  els.saveNicknameBtn.disabled = locked;
-  if (locked) {
-    els.saveNicknameBtn.textContent = "Locked";
-    els.nicknameInput.title = "Nickname is permanent for this wallet";
-  } else {
-    els.saveNicknameBtn.textContent = "Save";
-    els.nicknameInput.title = "";
+async function syncProfile() {
+  if (!state.address) return;
+  const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}`);
+  state.profile = response.profile;
+  refreshProfileUI();
+}
+
+async function verifyDbStatus() {
+  try {
+    const db = await apiGet("/api/db-status");
+    if (!db.ok) {
+      setStatus("DB issue detected. Check Redis config.");
+      return;
+    }
+    if (db.mode === "memory") {
+      setStatus("DB mode: memory (configure Redis for persistent state)");
+      return;
+    }
+    setStatus("DB mode: Redis connected");
+  } catch {
+    setStatus("DB status unavailable");
   }
 }
 
-function setMenuStatus(message) {
-  els.menuStatus.textContent = `Status: ${message}`;
+async function trackEvent(event) {
+  try {
+    await apiPost("/api/track", { event });
+  } catch {
+    // best effort
+  }
 }
 
 async function getProvider() {
@@ -644,6 +687,10 @@ async function apiPost(url, body) {
   return response.json();
 }
 
+function setStatus(message) {
+  els.menuStatus.textContent = `Status: ${message}`;
+}
+
 function applySafeArea(insets) {
   if (!insets) return;
   document.documentElement.style.setProperty("--safe-top", `${insets.top ?? 0}px`);
@@ -653,8 +700,12 @@ function applySafeArea(insets) {
 }
 
 function randSymbol() {
-  const values = ["🍒", "🍋", "🟦", "7", "💎"];
+  const values = ["🍒", "🍋", "🟦", "7️⃣", "💎"];
   return values[Math.floor(Math.random() * values.length)];
+}
+
+function normalizeDisplaySymbols(symbols) {
+  return symbols.map((s) => (s === "7" ? "7️⃣" : s));
 }
 
 function shortAddress(address) {
@@ -682,7 +733,7 @@ function escapeHtml(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
+    .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
 
