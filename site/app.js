@@ -568,13 +568,15 @@ async function onchainCheckin() {
   try {
     await syncProfile();
     const chainId = await ensureBaseChain();
-    const txRef = await submitCheckinTransaction(chainId);
-    const txHash = /^0x[a-fA-F0-9]{64}$/.test(String(txRef)) ? String(txRef) : "";
+    const tx = await submitCheckinTransaction(chainId);
+    if (!tx.txHash) {
+      throw new Error("check-in transaction hash not available");
+    }
 
     const result = await apiPost("/api/checkin", {
       address: state.address,
-      txHash,
-      txRef: String(txRef),
+      txHash: tx.txHash,
+      txRef: tx.txRef,
       chainId
     });
 
@@ -720,8 +722,8 @@ async function submitCheckinTransaction(chainId) {
   for (const req of attempts) {
     try {
       const result = await state.provider.request(req);
-      const ref = extractTxReference(result);
-      if (ref) return ref;
+      const normalized = await normalizeCheckinTxResult(req.method, result);
+      if (normalized?.txHash) return normalized;
     } catch (error) {
       if (isUserRejected(error)) {
         throw error;
@@ -733,20 +735,67 @@ async function submitCheckinTransaction(chainId) {
   throw new Error(lastError?.message ?? "check-in transaction failed");
 }
 
-function extractTxReference(result) {
-  if (typeof result === "string") {
-    return String(result).slice(0, 180);
+async function normalizeCheckinTxResult(method, result) {
+  if (method === "eth_sendTransaction") {
+    const hash = normalizeTxHash(result);
+    if (hash) return { txHash: hash, txRef: hash };
+    return null;
   }
-  if (result?.transactionHash) {
-    return String(result.transactionHash).slice(0, 180);
+
+  if (method === "wallet_sendCalls") {
+    const directHash = normalizeTxHash(result?.transactionHash ?? result);
+    if (directHash) return { txHash: directHash, txRef: directHash };
+
+    const callId = String(result?.id ?? result ?? "").trim();
+    if (!callId) return null;
+
+    const hashFromStatus = await resolveSendCallsHash(callId);
+    if (!hashFromStatus) return null;
+    return { txHash: hashFromStatus, txRef: callId.slice(0, 180) };
   }
-  if (result?.id) {
-    return String(result.id).slice(0, 180);
+
+  const fallbackHash = normalizeTxHash(result);
+  if (fallbackHash) {
+    return { txHash: fallbackHash, txRef: fallbackHash };
   }
-  if (Array.isArray(result) && result.length > 0) {
-    return String(result[0]).slice(0, 180);
+
+  return null;
+}
+
+async function resolveSendCallsHash(callId) {
+  for (let i = 0; i < 15; i += 1) {
+    try {
+      const status = await state.provider.request({
+        method: "wallet_getCallsStatus",
+        params: [callId]
+      });
+      const hash =
+        normalizeTxHash(status?.transactionHash) ||
+        normalizeTxHash(status?.receipt?.transactionHash) ||
+        normalizeTxHash(status?.receipts?.[0]?.transactionHash) ||
+        normalizeTxHash(status?.receipts?.[0]?.hash);
+
+      if (hash) return hash;
+
+      const lifecycle = String(status?.status ?? status?.state ?? "").toLowerCase();
+      if (lifecycle.includes("failed") || lifecycle.includes("reverted")) {
+        return null;
+      }
+    } catch {
+      // keep polling briefly
+    }
+    await delay(1200);
   }
-  return `checkin-${Date.now()}`;
+  return null;
+}
+
+function normalizeTxHash(value) {
+  const hash = String(value ?? "").trim();
+  return /^0x[a-fA-F0-9]{64}$/.test(hash) ? hash : "";
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function isUserRejected(error) {
