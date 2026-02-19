@@ -10,8 +10,8 @@ const state = {
   sdk: null,
   provider: null,
   address: null,
-  inMiniApp: false,
   coins: 0,
+  inMiniApp: false,
   lastSpinAt: 0,
   cooldownMs: 60 * 60 * 1000,
   spinning: false,
@@ -21,8 +21,6 @@ const state = {
 };
 
 const els = {
-  status: byId("miniapp-status"),
-  contextInfo: byId("context-info"),
   walletAddress: byId("wallet-address"),
   menuAddress: byId("menu-address"),
   coins: byId("coins"),
@@ -33,7 +31,9 @@ const els = {
   battleSubtitle: byId("battle-subtitle"),
   board: byId("board"),
   connectBtn: byId("connect-btn"),
+  openSlotBtn: byId("open-slot-btn"),
   spinBtn: byId("spin-btn"),
+  slotBackBtn: byId("slot-back-btn"),
   pveBtn: byId("pve-btn"),
   pvpBtn: byId("pvp-btn"),
   resetBtn: byId("reset-match"),
@@ -42,17 +42,17 @@ const els = {
   reels: [byId("reel-0"), byId("reel-1"), byId("reel-2")],
   screenWallet: byId("screen-wallet"),
   screenMenu: byId("screen-menu"),
+  screenSlot: byId("screen-slot"),
   screenBattle: byId("screen-battle")
 };
 
-boot().catch((error) => {
-  els.status.textContent = `Mini App status: failed (${error?.message ?? "unknown error"})`;
-});
+boot();
 
 async function boot() {
   await setupMiniAppSDK();
   wireEvents();
   renderBoard();
+  refreshCoins();
   updateCooldown();
   setInterval(updateCooldown, 1000);
   await tryAutoConnect();
@@ -61,26 +61,20 @@ async function boot() {
 async function setupMiniAppSDK() {
   try {
     const mod = await import("https://esm.sh/@farcaster/miniapp-sdk");
-    const sdk = mod.default;
-    state.sdk = sdk;
-
-    const context = await Promise.resolve(sdk.context);
+    state.sdk = mod.default;
+    const context = await Promise.resolve(state.sdk.context);
     state.inMiniApp = Boolean(context?.client);
     applySafeArea(context?.client?.safeAreaInsets);
-
-    const fid = context?.user?.fid ? `fid=${context.user.fid}` : "fid=unknown";
-    const location = context?.location?.type ?? "location=unknown";
-    els.contextInfo.textContent = `Context: ${fid}, ${location}`;
-
-    await sdk.actions?.ready?.();
-    els.status.textContent = state.inMiniApp ? "Mini App status: ready" : "Mini App status: web fallback";
+    await state.sdk.actions?.ready?.();
   } catch {
-    els.status.textContent = "Mini App status: sdk unavailable (web fallback)";
+    // web fallback
   }
 }
 
 function wireEvents() {
   els.connectBtn.addEventListener("click", connectWalletInteractive);
+  els.openSlotBtn.addEventListener("click", () => setScreen("slot"));
+  els.slotBackBtn.addEventListener("click", () => setScreen("menu"));
   els.spinBtn.addEventListener("click", spinInteractive);
   els.pveBtn.addEventListener("click", () => startBattle("pve"));
   els.pvpBtn.addEventListener("click", () => startBattle("pvp"));
@@ -116,23 +110,23 @@ async function connectWalletInteractive() {
     if (!first) throw new Error("Wallet returned no account");
 
     onWalletConnected(first);
-  } catch (error) {
-    els.walletAddress.textContent = `Address: connect failed (${error?.message ?? "unknown"})`;
+  } catch {
+    els.walletAddress.textContent = "Connection failed. Try again.";
   }
 }
 
 function onWalletConnected(address) {
   state.address = address;
-  els.walletAddress.textContent = `Address: ${address}`;
+  els.walletAddress.textContent = `Connected: ${shortAddress(address)}`;
   els.menuAddress.textContent = `Wallet: ${shortAddress(address)}`;
-  refreshCoins();
   setScreen("menu");
 }
 
-function setScreen(screen) {
-  els.screenWallet.classList.toggle("active", screen === "wallet");
-  els.screenMenu.classList.toggle("active", screen === "menu");
-  els.screenBattle.classList.toggle("active", screen === "battle");
+function setScreen(name) {
+  els.screenWallet.classList.toggle("active", name === "wallet");
+  els.screenMenu.classList.toggle("active", name === "menu");
+  els.screenSlot.classList.toggle("active", name === "slot");
+  els.screenBattle.classList.toggle("active", name === "battle");
 }
 
 async function spinInteractive() {
@@ -141,13 +135,13 @@ async function spinInteractive() {
   const now = Date.now();
   const wait = state.cooldownMs - (now - state.lastSpinAt);
   if (state.lastSpinAt > 0 && wait > 0) {
-    els.spinResult.textContent = "Spin result: cooldown active";
+    els.spinResult.textContent = "Cooldown active. Come back later.";
     return;
   }
 
   state.spinning = true;
   els.spinBtn.disabled = true;
-  els.spinResult.textContent = "Spin result: spinning...";
+  els.spinResult.textContent = "Spinning...";
 
   const finalValues = [randSymbol(), randSymbol(), randSymbol()];
   const result = await animateReels(finalValues);
@@ -155,18 +149,16 @@ async function spinInteractive() {
   const reward = result.reduce((a, b) => a + b, 0);
   state.coins += reward;
   state.lastSpinAt = Date.now();
-
   refreshCoins();
-  updateCooldown();
-  els.spinResult.textContent = `Spin result: [${result.join(" | ")}] => +${reward} coins`;
 
+  els.spinResult.textContent = `Result ${result.join(" | ")}  +${reward} coins`;
   state.spinning = false;
   updateCooldown();
 }
 
 async function animateReels(finalValues) {
-  const spinMs = 1500;
-  const tickMs = 90;
+  const spinMs = 1700;
+  const tickMs = 80;
   const start = Date.now();
 
   return new Promise((resolve) => {
@@ -200,10 +192,10 @@ function updateCooldown() {
     return;
   }
 
-  const totalSeconds = Math.floor(left / 1000);
-  const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-  const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, "0");
-  const ss = String(totalSeconds % 60).padStart(2, "0");
+  const total = Math.floor(left / 1000);
+  const hh = String(Math.floor(total / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+  const ss = String(total % 60).padStart(2, "0");
   els.spinCooldown.textContent = `Cooldown: ${hh}:${mm}:${ss}`;
   els.spinBtn.disabled = true;
 }
@@ -211,7 +203,7 @@ function updateCooldown() {
 function startBattle(mode) {
   if (mode === "pvp") {
     if (state.coins < PVP_ENTRY_COST) {
-      els.spinResult.textContent = `Need ${PVP_ENTRY_COST} coins for PvP`;
+      setScreen("menu");
       return;
     }
     state.coins -= PVP_ENTRY_COST;
@@ -221,18 +213,18 @@ function startBattle(mode) {
   state.mode = mode;
   resetMatch();
   els.battleTitle.textContent = mode === "pve" ? "PvE Training" : "PvP Match";
-  els.battleSubtitle.textContent = mode === "pve" ? "Mode: training (no coin deduction)" : `Mode: pvp (entry ${PVP_ENTRY_COST} coins)`;
+  els.battleSubtitle.textContent = mode === "pve" ? "Practice mode. Coins are safe." : `Entry: ${PVP_ENTRY_COST} coins`;
   setScreen("battle");
 }
 
 function renderBoard() {
   els.board.innerHTML = "";
-  state.board.forEach((cell, idx) => {
+  state.board.forEach((cell, index) => {
     const button = document.createElement("button");
     button.className = "cell";
     button.type = "button";
     button.textContent = cell ?? "";
-    button.addEventListener("click", () => onPlayerMove(idx));
+    button.addEventListener("click", () => onPlayerMove(index));
     els.board.appendChild(button);
   });
 }
@@ -246,7 +238,7 @@ function onPlayerMove(index) {
   const empty = state.board.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
   if (empty.length === 0) {
     state.finished = true;
-    els.matchResult.textContent = "Match: draw";
+    els.matchResult.textContent = "Draw";
     renderBoard();
     return;
   }
@@ -267,12 +259,12 @@ function resolveWinner(marker) {
     if (state.mode === "pvp") {
       state.coins += PVP_ENTRY_COST * 2;
       refreshCoins();
-      els.matchResult.textContent = "Match: you win (+20 coins)";
+      els.matchResult.textContent = "You win +20";
     } else {
-      els.matchResult.textContent = "Match: you win (training)";
+      els.matchResult.textContent = "You win";
     }
   } else {
-    els.matchResult.textContent = state.mode === "pvp" ? "Match: you lost (pvp)" : "Match: bot wins (training)";
+    els.matchResult.textContent = state.mode === "pvp" ? "You lost" : "Bot wins";
   }
 
   renderBoard();
@@ -282,33 +274,14 @@ function resolveWinner(marker) {
 function resetMatch() {
   state.board = Array(9).fill(null);
   state.finished = false;
-  els.matchResult.textContent = "Match: in progress";
+  els.matchResult.textContent = "Match in progress";
   renderBoard();
-}
-
-async function openRules() {
-  const url = "https://docs.base.org/mini-apps/quickstart/build-checklist";
-  try {
-    if (state.sdk?.actions?.openUrl) {
-      await state.sdk.actions.openUrl(url);
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
-  } catch {
-    // ignore
-  }
-}
-
-async function getProvider() {
-  const sdkProvider = await state.sdk?.wallet?.getEthereumProvider?.();
-  return sdkProvider ?? window.ethereum ?? null;
 }
 
 function pickBotMove(board, emptyCells) {
   if (state.mode === "pvp") {
     return emptyCells[Math.floor(Math.random() * emptyCells.length)];
   }
-
   return pickBestMoveMinimax(board, emptyCells);
 }
 
@@ -366,8 +339,26 @@ function getWinner(board) {
   return null;
 }
 
+async function openRules() {
+  const url = "https://docs.base.org/mini-apps/featured-guidelines/design-guidelines";
+  try {
+    if (state.sdk?.actions?.openUrl) {
+      await state.sdk.actions.openUrl(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch {
+    // ignore
+  }
+}
+
+async function getProvider() {
+  const sdkProvider = await state.sdk?.wallet?.getEthereumProvider?.();
+  return sdkProvider ?? window.ethereum ?? null;
+}
+
 function refreshCoins() {
-  els.coins.textContent = `Coins: ${state.coins}`;
+  els.coins.textContent = String(state.coins);
 }
 
 function applySafeArea(insets) {
@@ -388,7 +379,7 @@ function shortAddress(address) {
 }
 
 function byId(id) {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`Missing element: ${id}`);
-  return el;
+  const element = document.getElementById(id);
+  if (!element) throw new Error(`Missing element: ${id}`);
+  return element;
 }

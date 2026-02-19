@@ -10,57 +10,78 @@
   <meta property="og:description" content="Spin hourly, earn coins, and battle 1v1." />
   <meta property="og:image" content="__APP_URL__/og.svg" />
   <meta property="fc:frame" content='__FC_FRAME__' />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@500;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <main class="app-shell">
-    <header class="topbar panel">
-      <h1>Gamble Battle</h1>
-      <p id="miniapp-status">Mini App status: initializing...</p>
-      <p id="context-info">Context: unavailable</p>
-    </header>
-
-    <section id="screen-wallet" class="panel screen active">
-      <h2>Connect Wallet</h2>
-      <p>Подключите кошелек, чтобы открыть игру.</p>
-      <button id="connect-btn" type="button">Connect Wallet</button>
-      <p id="wallet-address">Address: not connected</p>
+    <section id="screen-wallet" class="screen active">
+      <article class="card card-wallet">
+        <h1 class="brand">Gamble Battle</h1>
+        <p class="subtitle">Enter the arena. Spin. Wager. Win.</p>
+        <button id="connect-btn" class="btn btn-gold" type="button">Connect Wallet</button>
+        <p id="wallet-address" class="tiny">Wallet not connected</p>
+      </article>
     </section>
 
-    <section id="screen-menu" class="panel screen">
-      <h2>Main Menu</h2>
-      <div class="menu-line">
-        <span id="menu-address">Wallet: -</span>
-        <strong id="coins">Coins: 0</strong>
-      </div>
+    <section id="screen-menu" class="screen">
+      <article class="card card-menu">
+        <header class="menu-top">
+          <div>
+            <h1 class="brand">Main Menu</h1>
+            <p id="menu-address" class="tiny">Wallet: -</p>
+          </div>
+          <div class="coins-box">
+            <span>Coins</span>
+            <strong id="coins">0</strong>
+          </div>
+        </header>
 
-      <div class="slot-machine">
-        <div class="reel" id="reel-0">1</div>
-        <div class="reel" id="reel-1">1</div>
-        <div class="reel" id="reel-2">1</div>
-      </div>
-
-      <button id="spin-btn" type="button">SPIN</button>
-      <p id="spin-result">Spin result: waiting</p>
-      <p id="spin-cooldown">Cooldown: ready</p>
-
-      <div class="actions">
-        <button id="pve-btn" type="button">PvE (Training)</button>
-        <button id="pvp-btn" type="button">PvP</button>
-        <button id="open-rules-btn" type="button">Open Rules</button>
-      </div>
+        <div class="menu-grid">
+          <button id="open-slot-btn" class="btn btn-gold large" type="button">Spin</button>
+          <button id="pve-btn" class="btn btn-emerald" type="button">PvE Training</button>
+          <button id="pvp-btn" class="btn btn-crimson" type="button">PvP Match</button>
+          <button id="open-rules-btn" class="btn btn-ink" type="button">Open Rules</button>
+        </div>
+      </article>
     </section>
 
-    <section id="screen-battle" class="panel screen">
-      <h2 id="battle-title">Battle</h2>
-      <p id="battle-subtitle">Mode: -</p>
-      <div id="board" class="board" aria-label="tic tac toe board"></div>
-      <p id="match-result">Match: in progress</p>
-      <div class="actions">
-        <button id="reset-match" type="button">New Match</button>
-        <button id="back-menu" type="button">Back To Menu</button>
-      </div>
+    <section id="screen-slot" class="screen">
+      <article class="card card-slot">
+        <header class="panel-head">
+          <h2>Lucky Slot</h2>
+          <button id="slot-back-btn" class="btn btn-ink" type="button">Back</button>
+        </header>
+
+        <div class="slot-shell">
+          <div class="reel" id="reel-0">7</div>
+          <div class="reel" id="reel-1">7</div>
+          <div class="reel" id="reel-2">7</div>
+        </div>
+
+        <button id="spin-btn" class="btn btn-gold large" type="button">Pull</button>
+        <p id="spin-result" class="tiny center">Ready to spin</p>
+        <p id="spin-cooldown" class="tiny center">Cooldown: ready</p>
+      </article>
+    </section>
+
+    <section id="screen-battle" class="screen">
+      <article class="card card-battle">
+        <header class="panel-head">
+          <div>
+            <h2 id="battle-title">Battle</h2>
+            <p id="battle-subtitle" class="tiny">Mode: -</p>
+          </div>
+          <button id="back-menu" class="btn btn-ink" type="button">Back</button>
+        </header>
+
+        <div id="board" class="board" aria-label="tic tac toe board"></div>
+        <p id="match-result" class="tiny center">Match in progress</p>
+        <button id="reset-match" class="btn btn-gold" type="button">New Match</button>
+      </article>
     </section>
   </main>
 
