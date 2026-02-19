@@ -74,6 +74,21 @@ async function setValue(key, value) {
   memory.set(key, value);
 }
 
+async function deleteValue(key) {
+  if (hasRedisUrlConfig()) {
+    const client = await getRedisUrlClient();
+    await client.del(key);
+    return;
+  }
+
+  if (hasRedisConfig()) {
+    await redisRequest(`/del/${encodeURIComponent(key)}`);
+    return;
+  }
+
+  memory.delete(key);
+}
+
 function getStoreMode() {
   if (hasRedisUrlConfig()) return "redis_url";
   return hasRedisConfig() ? "redis" : "memory";
@@ -90,6 +105,7 @@ async function pingStore() {
 module.exports = {
   getValue,
   setValue,
+  deleteValue,
   hasRedisConfig,
   hasRedisUrlConfig,
   getStoreMode,

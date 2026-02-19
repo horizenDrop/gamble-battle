@@ -15,7 +15,8 @@ const state = {
   mode: "pve",
   pveFirstMover: "player",
   playerTurn: true,
-  leaderboardRows: []
+  leaderboardRows: [],
+  pvpPollId: null
 };
 
 const els = {
@@ -108,6 +109,7 @@ function wireEvents() {
   els.checkinBtn.addEventListener("click", onchainCheckin);
   els.resetBtn.addEventListener("click", resetMatch);
   els.backMenuBtn.addEventListener("click", async () => {
+    stopPvpPolling();
     await syncProfile();
     setScreen("menu");
   });
@@ -264,6 +266,12 @@ function updateCooldown() {
 
 async function startBattle(mode) {
   if (!state.address) return;
+  stopPvpPolling();
+
+  if (mode === "pvp") {
+    await startPvpMatchmaking();
+    return;
+  }
 
   const start = await apiPost("/api/battle", {
     address: state.address,
@@ -298,6 +306,92 @@ async function startBattle(mode) {
   trackEvent(mode === "pve" ? "battle_pve_start" : "battle_pvp_start");
 }
 
+async function startPvpMatchmaking() {
+  const join = await apiPost("/api/pvp-join", { address: state.address });
+
+  if (join.status === "insufficient") {
+    setStatus(`Not enough coins for PvP (need ${join.required})`);
+    await syncProfile();
+    return;
+  }
+
+  state.mode = "pvp";
+  els.pveControls.style.display = "none";
+  els.resetBtn.style.display = "none";
+  els.battleTitle.textContent = "PvP Matchmaking";
+  els.battleSubtitle.textContent = "Waiting for second player...";
+  state.board = Array(9).fill(null);
+  state.finished = false;
+  state.playerTurn = false;
+  renderBoard();
+  setScreen("battle");
+
+  applyPvpSnapshot(join);
+  startPvpPolling();
+  trackEvent("battle_pvp_queue");
+}
+
+function startPvpPolling() {
+  stopPvpPolling();
+  state.pvpPollId = setInterval(async () => {
+    try {
+      const snap = await apiGet(`/api/pvp-state?address=${encodeURIComponent(state.address)}`);
+      applyPvpSnapshot(snap);
+    } catch {
+      // keep trying
+    }
+  }, 2000);
+}
+
+function stopPvpPolling() {
+  if (state.pvpPollId) {
+    clearInterval(state.pvpPollId);
+    state.pvpPollId = null;
+  }
+}
+
+function applyPvpSnapshot(snapshot) {
+  if (!snapshot) return;
+
+  if (snapshot.status === "waiting") {
+    els.battleTitle.textContent = "PvP Matchmaking";
+    els.battleSubtitle.textContent = "Waiting for second player...";
+    els.matchResult.textContent = "Queue active";
+    state.playerTurn = false;
+    state.finished = false;
+    return;
+  }
+
+  if (snapshot.status === "active" && snapshot.match) {
+    const match = snapshot.match;
+    state.board = Array.isArray(match.board) ? match.board : Array(9).fill(null);
+    state.playerTurn = Boolean(match.yourTurn);
+    state.finished = false;
+    els.battleTitle.textContent = "PvP Match";
+    els.battleSubtitle.textContent = `Round ${match.round} | ${state.playerTurn ? "Your turn" : "Opponent turn"}`;
+    const left = Math.max(0, (match.timeoutMs ?? 60000) - (Date.now() - Number(match.turnStartedAt ?? Date.now())));
+    els.matchResult.textContent = `Turn timer: ${Math.ceil(left / 1000)}s`;
+    renderBoard();
+    return;
+  }
+
+  if (snapshot.status === "finished") {
+    stopPvpPolling();
+    state.finished = true;
+    state.playerTurn = false;
+    els.battleTitle.textContent = "PvP Result";
+    els.battleSubtitle.textContent = snapshot.reason === "timeout" ? "Finished by timeout" : "Match finished";
+    els.matchResult.textContent = snapshot.outcome === "win" ? `You win +${snapshot.reward} coins` : "You lose";
+    if (snapshot.profile) {
+      state.profile = snapshot.profile;
+      refreshProfileUI();
+    } else {
+      syncProfile();
+    }
+    return;
+  }
+}
+
 function renderBoard() {
   els.board.innerHTML = "";
   state.board.forEach((cell, index) => {
@@ -312,6 +406,12 @@ function renderBoard() {
 
 async function onPlayerMove(index) {
   if (state.finished || state.board[index] || !state.playerTurn) return;
+
+  if (state.mode === "pvp") {
+    const next = await apiPost("/api/pvp-move", { address: state.address, index });
+    applyPvpSnapshot(next);
+    return;
+  }
 
   state.board[index] = "X";
   state.playerTurn = false;
@@ -387,6 +487,9 @@ async function botTakeTurn() {
 }
 
 async function resetMatch() {
+  if (state.mode === "pvp") return;
+
+  els.resetBtn.style.display = "inline-block";
   state.board = Array(9).fill(null);
   state.finished = false;
   state.playerTurn = state.mode !== "pve" || state.pveFirstMover === "player";
