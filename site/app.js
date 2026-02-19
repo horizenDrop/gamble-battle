@@ -579,6 +579,8 @@ async function onchainCheckin() {
     });
 
     if (result.ok) {
+      state.profile = result.profile ?? state.profile;
+      refreshProfileUI();
       await syncProfile();
       trackEvent("checkin_success");
       return;
@@ -805,7 +807,7 @@ function refreshProfileUI() {
 
 async function syncProfile() {
   if (!state.address) return;
-  const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}`);
+  const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}&_ts=${Date.now()}`);
   state.profile = response.profile;
   refreshProfileUI();
 }
@@ -835,7 +837,7 @@ async function getProvider() {
 }
 
 async function apiGet(url) {
-  const response = await fetch(url, { method: "GET" });
+  const response = await fetch(url, { method: "GET", cache: "no-store" });
   if (!response.ok) throw new Error("Request failed");
   return response.json();
 }
