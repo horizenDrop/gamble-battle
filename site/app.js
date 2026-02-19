@@ -1,5 +1,10 @@
 ﻿const SPIN_VALUES = [1, 2, 3, 5, 8, 13];
 const PVP_ENTRY_COST = 10;
+const WIN_LINES = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6]
+];
 
 const state = {
   sdk: null,
@@ -246,20 +251,14 @@ function onPlayerMove(index) {
     return;
   }
 
-  const botPick = pickBotMove(empty);
+  const botPick = pickBotMove(state.board, empty);
   state.board[botPick] = "O";
   resolveWinner("O");
   renderBoard();
 }
 
 function resolveWinner(marker) {
-  const lines = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],
-    [0, 4, 8], [2, 4, 6]
-  ];
-
-  const won = lines.some(([a, b, c]) => state.board[a] === marker && state.board[b] === marker && state.board[c] === marker);
+  const won = WIN_LINES.some(([a, b, c]) => state.board[a] === marker && state.board[b] === marker && state.board[c] === marker);
   if (!won) return false;
 
   state.finished = true;
@@ -305,14 +304,66 @@ async function getProvider() {
   return sdkProvider ?? window.ethereum ?? null;
 }
 
-function pickBotMove(emptyCells) {
+function pickBotMove(board, emptyCells) {
   if (state.mode === "pvp") {
     return emptyCells[Math.floor(Math.random() * emptyCells.length)];
   }
 
-  const priority = [4, 0, 2, 6, 8, 1, 3, 5, 7];
-  const preferred = priority.find((idx) => emptyCells.includes(idx));
-  return preferred ?? emptyCells[0];
+  return pickBestMoveMinimax(board, emptyCells);
+}
+
+function pickBestMoveMinimax(board, emptyCells) {
+  let bestMove = emptyCells[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const idx of emptyCells) {
+    board[idx] = "O";
+    const score = minimax(board, false);
+    board[idx] = null;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = idx;
+    }
+  }
+
+  return bestMove;
+}
+
+function minimax(board, isBotTurn) {
+  const winner = getWinner(board);
+  if (winner === "O") return 10;
+  if (winner === "X") return -10;
+  if (board.every((cell) => cell !== null)) return 0;
+
+  const empty = board.map((v, i) => (v ? -1 : i)).filter((i) => i >= 0);
+
+  if (isBotTurn) {
+    let best = Number.NEGATIVE_INFINITY;
+    for (const idx of empty) {
+      board[idx] = "O";
+      best = Math.max(best, minimax(board, false));
+      board[idx] = null;
+    }
+    return best;
+  }
+
+  let best = Number.POSITIVE_INFINITY;
+  for (const idx of empty) {
+    board[idx] = "X";
+    best = Math.min(best, minimax(board, true));
+    board[idx] = null;
+  }
+  return best;
+}
+
+function getWinner(board) {
+  for (const [a, b, c] of WIN_LINES) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return board[a];
+    }
+  }
+  return null;
 }
 
 function refreshCoins() {
