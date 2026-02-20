@@ -45,9 +45,13 @@ await writeFile(indexPath, nextIndex, "utf8");
 
 const manifest = {
   accountAssociation: {
-    header: process.env.FARCASTER_HEADER ?? "replace-me",
-    payload: process.env.FARCASTER_PAYLOAD ?? "replace-me",
-    signature: process.env.FARCASTER_SIGNATURE ?? "replace-me"
+    header:
+      process.env.FARCASTER_HEADER ??
+      "eyJmaWQiOjI4MTMxMTIsInR5cGUiOiJhdXRoIiwia2V5IjoiMHhlOTMxODFlMEZDNTFhYjQyNTU2QjI5MzdGMjVEOThhNDc3OTI1NzY4In0",
+    payload: process.env.FARCASTER_PAYLOAD ?? "eyJkb21haW4iOiJnYW1ibGUtYmF0dGxlLnZlcmNlbC5hcHAifQ",
+    signature:
+      process.env.FARCASTER_SIGNATURE ??
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEEj2lG2kG3L3saBbPAraVSgJu3T7l-bHhERIhiIjKsROELmvWfJLj0kScpz-qsnvsrAyOUZDK2fwK9VuE0CCKqmHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   },
   frame: {
     version: "1",
