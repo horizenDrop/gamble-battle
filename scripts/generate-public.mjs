@@ -1,12 +1,22 @@
-﻿import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = process.cwd();
 const siteDir = resolve(root, "site");
 const publicDir = resolve(root, "public");
-const fallbackVercelUrl =
-  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : process.env.VERCEL_PROJECT_PRODUCTION_URL;
-const appUrl = (process.env.APP_URL ?? fallbackVercelUrl ?? "https://example.com").replace(/\/$/, "");
+// VERCEL_PROJECT_PRODUCTION_URL is a bare host and must get a scheme, and the
+// stable production host has to win over VERCEL_URL, which is the per-deploy
+// preview host and would end up baked into the production manifest.
+const fallbackVercelUrl = toHttpsUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ?? toHttpsUrl(process.env.VERCEL_URL);
+const appUrl = (toHttpsUrl(process.env.APP_URL) ?? fallbackVercelUrl ?? "https://example.com").replace(/\/$/, "");
+
+function toHttpsUrl(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const host = raw.replace(/^https?:\/\//i, "").split("/")[0].trim();
+  if (!host) return null;
+  return `https://${host}`;
+}
 const isProductionDeploy = process.env.VERCEL_ENV === "production";
 const hasSignedAssociation =
   Boolean(process.env.FARCASTER_HEADER) &&
@@ -40,7 +50,7 @@ const indexPath = resolve(publicDir, "index.html");
 const currentIndex = await readFile(indexPath, "utf8");
 const nextIndex = currentIndex
   .replaceAll("__APP_URL__", appUrl)
-  .replace("__FC_FRAME__", escapeHtmlAttribute(JSON.stringify(frameObject)));
+  .replaceAll("__FC_FRAME__", escapeHtmlAttribute(JSON.stringify(frameObject)));
 await writeFile(indexPath, nextIndex, "utf8");
 
 const manifest = {
@@ -53,7 +63,12 @@ const manifest = {
       process.env.FARCASTER_SIGNATURE ??
       "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEEj2lG2kG3L3saBbPAraVSgJu3T7l-bHhERIhiIjKsROELmvWfJLj0kScpz-qsnvsrAyOUZDK2fwK9VuE0CCKqmHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
   },
-  frame: {
+  miniapp: miniappManifest(),
+  frame: miniappManifest()
+};
+
+function miniappManifest() {
+  return {
     version: "1",
     name: "Gamble Battle",
     iconUrl: `${appUrl}/icon.svg`,
@@ -63,8 +78,8 @@ const manifest = {
     splashImageUrl: `${appUrl}/icon.svg`,
     splashBackgroundColor: "#081428",
     webhookUrl: process.env.WEBHOOK_URL ?? `${appUrl}/api/webhook`
-  }
-};
+  };
+}
 
 if (isProductionDeploy && !hasSignedAssociation) {
   console.warn("[miniapp] FARCASTER_* env vars are not fully configured. Manifest uses placeholder association fields.");

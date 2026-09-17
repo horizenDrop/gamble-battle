@@ -1,7 +1,10 @@
-﻿const { isValidAddress, loadProfile, parseBody, saveProfile, sendJson } = require("./_lib/profile");
+const { isValidAddress, loadProfile, parseBody, saveProfile, sendJson } = require("./_lib/profile");
+const { withLock } = require("./_lib/store");
 
-const PVP_ENTRY_COST = 10;
-
+// PvP is settled by the authoritative /api/pvp-* endpoints, which hold the
+// match state and the pot. This endpoint only records the local PvE bot games,
+// so it must never move coins - accepting a client-declared "pvp win" here was
+// an unauthenticated way to mint PVP_ENTRY_COST * 2 coins per request.
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed" });
@@ -17,22 +20,14 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 400, { error: "Invalid address" });
   }
 
-  if (!["pve", "pvp"].includes(mode)) {
-    return sendJson(res, 400, { error: "Invalid mode" });
+  if (mode !== "pve") {
+    return sendJson(res, 400, { error: "PvP results are settled by /api/pvp-move" });
   }
 
-  const profile = await loadProfile(address);
-
   if (stage === "start") {
-    if (mode === "pvp") {
-      if (profile.balance < PVP_ENTRY_COST) {
-        return sendJson(res, 200, { ok: false, reason: "NOT_ENOUGH_COINS", profile });
-      }
-      profile.balance -= PVP_ENTRY_COST;
-    }
-
+    const profile = await loadProfile(address);
     const saved = await saveProfile(profile);
-    return sendJson(res, 200, { ok: true, profile: saved, entryCost: mode === "pvp" ? PVP_ENTRY_COST : 0 });
+    return sendJson(res, 200, { ok: true, profile: saved, entryCost: 0 });
   }
 
   if (stage === "finish") {
@@ -40,28 +35,26 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 400, { error: "Invalid outcome" });
     }
 
-    profile.totalGames += 1;
-    if (mode === "pve") profile.pveGames += 1;
-    if (mode === "pvp") profile.pvpGames += 1;
+    const saved = await withLock(`battle:${address}`, 3_000, async () => {
+      const profile = await loadProfile(address);
+      profile.totalGames += 1;
+      profile.pveGames += 1;
 
-    if (outcome === "win") profile.wins += 1;
-    if (outcome === "loss") profile.losses += 1;
-    if (outcome === "draw") profile.draws += 1;
+      if (outcome === "win") {
+        profile.wins += 1;
+        profile.pvePlayerWins += 1;
+      }
+      if (outcome === "loss") {
+        profile.losses += 1;
+        profile.pveBotWins += 1;
+      }
+      if (outcome === "draw") {
+        profile.draws += 1;
+      }
 
-    if (mode === "pve") {
-      if (outcome === "win") profile.pvePlayerWins += 1;
-      if (outcome === "loss") profile.pveBotWins += 1;
-    }
+      return saveProfile(profile);
+    });
 
-    if (mode === "pvp") {
-      if (outcome === "win") profile.pvpWins += 1;
-      if (outcome === "loss") profile.pvpLosses += 1;
-      if (outcome === "draw") profile.pvpDraws += 1;
-      if (outcome === "win") profile.balance += PVP_ENTRY_COST * 2;
-      if (outcome === "draw") profile.balance += PVP_ENTRY_COST;
-    }
-
-    const saved = await saveProfile(profile);
     return sendJson(res, 200, { ok: true, profile: saved });
   }
 

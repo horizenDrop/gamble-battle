@@ -12,6 +12,7 @@ const {
   createInitialMatch,
   ensurePlayersCanEnter,
   chargeEntry,
+  withMatchmakingLock,
   canJoinAddress
 } = require("./_lib/pvp");
 
@@ -39,34 +40,41 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 200, { status: "insufficient", required: PVP_ENTRY_COST, balance: profile.balance });
   }
 
-  const queue = await getQueue();
-  if (!queue) {
-    await setQueue({ address, createdAt: Date.now() });
-    return sendJson(res, 200, { status: "waiting", required: PVP_ENTRY_COST });
-  }
-
-  if (normalize(queue.address) === address) {
-    return sendJson(res, 200, { status: "waiting", required: PVP_ENTRY_COST });
-  }
-
-  const check = await ensurePlayersCanEnter(queue.address, address);
-  if (!check.ok) {
-    await clearQueue();
-    if (check.who === address) {
-      return sendJson(res, 200, { status: "insufficient", required: PVP_ENTRY_COST, balance: profile.balance });
+  // Reading the queue and creating the match must be one critical section,
+  // otherwise two joins can pair with the same queued player and charge them
+  // twice.
+  const outcome = await withMatchmakingLock(async () => {
+    const queue = await getQueue();
+    if (!queue) {
+      await setQueue({ address, createdAt: Date.now() });
+      return { status: "waiting", required: PVP_ENTRY_COST };
     }
-    await setQueue({ address, createdAt: Date.now() });
-    return sendJson(res, 200, { status: "waiting", required: PVP_ENTRY_COST });
-  }
 
-  await chargeEntry(check.profileA, check.profileB);
-  const match = createInitialMatch(queue.address, address);
-  await saveMatch(match);
-  await setPlayerMatchId(match.players.X, match.id);
-  await setPlayerMatchId(match.players.O, match.id);
-  await clearQueue();
+    if (normalize(queue.address) === address) {
+      return { status: "waiting", required: PVP_ENTRY_COST };
+    }
 
-  return sendJson(res, 200, { status: "active", match: toMatchView(match, address) });
+    const check = await ensurePlayersCanEnter(queue.address, address);
+    if (!check.ok) {
+      await clearQueue();
+      if (check.who === address) {
+        return { status: "insufficient", required: PVP_ENTRY_COST, balance: profile.balance };
+      }
+      await setQueue({ address, createdAt: Date.now() });
+      return { status: "waiting", required: PVP_ENTRY_COST };
+    }
+
+    await chargeEntry(check.profileA, check.profileB);
+    const match = createInitialMatch(queue.address, address);
+    await saveMatch(match);
+    await setPlayerMatchId(match.players.X, match.id);
+    await setPlayerMatchId(match.players.O, match.id);
+    await clearQueue();
+
+    return { status: "active", match: toMatchView(match, address) };
+  });
+
+  return sendJson(res, 200, outcome);
 };
 
 function toMatchView(match, address) {

@@ -1,4 +1,4 @@
-﻿const WIN_LINES = [
+const WIN_LINES = [
   [0, 1, 2], [3, 4, 5], [6, 7, 8],
   [0, 3, 6], [1, 4, 7], [2, 5, 8],
   [0, 4, 8], [2, 4, 6]
@@ -53,6 +53,7 @@ const els = {
   pveFirstPlayerBtn: byId("pve-first-player"),
   pveFirstBotBtn: byId("pve-first-bot"),
   checkinBtn: byId("checkin-btn"),
+  checkinStatus: byId("checkin-status"),
   resetBtn: byId("reset-match"),
   backMenuBtn: byId("back-menu"),
   reels: [byId("reel-0"), byId("reel-1"), byId("reel-2")],
@@ -68,22 +69,49 @@ const els = {
 boot();
 
 async function boot() {
-  await setupMiniAppSDK();
+  // Wire the UI before touching the network: a slow or blocked SDK import must
+  // not leave every button dead.
   wireEvents();
   renderBoard();
   setInterval(updateCooldown, 1000);
+  await setupMiniAppSDK();
   await tryAutoConnect();
 }
 
 async function setupMiniAppSDK() {
+  state.sdk = await resolveMiniAppSdk();
+  if (!state.sdk) return;
+
   try {
-    const mod = await import("https://esm.sh/@farcaster/miniapp-sdk");
-    state.sdk = mod.default;
     const context = await Promise.resolve(state.sdk.context);
     applySafeArea(context?.client?.safeAreaInsets);
+  } catch {
+    // context is optional; the ready signal below is not
+  }
+
+  try {
     await state.sdk.actions?.ready?.();
   } catch {
-    // web fallback
+    // host will keep showing the splash; nothing else we can do here
+  }
+}
+
+async function resolveMiniAppSdk() {
+  const injected = [
+    globalThis?.miniapp?.sdk,
+    globalThis?.frame?.sdk,
+    globalThis?.farcaster?.sdk,
+    globalThis?.sdk
+  ].find((candidate) => typeof candidate?.actions?.ready === "function");
+  if (injected) return injected;
+
+  try {
+    const mod = await import("https://esm.sh/@farcaster/miniapp-sdk");
+    // The package exposes a named `sdk` export; `default` is undefined.
+    const sdk = mod?.sdk ?? mod?.default;
+    return typeof sdk?.actions?.ready === "function" ? sdk : null;
+  } catch {
+    return null;
   }
 }
 
@@ -153,8 +181,7 @@ async function onWalletConnected(address) {
   await syncProfile();
   const hasNickname = Boolean(String(state.profile?.nickname ?? "").trim());
   setScreen(hasNickname ? "menu" : "nickname");
-  if (hasNickname) {
-  } else {
+  if (!hasNickname) {
     els.nicknameInput.value = "";
     els.nicknameStatus.textContent = "Choose nickname once. It cannot be changed.";
   }
@@ -192,30 +219,34 @@ async function spinInteractive() {
   updateCooldown();
   els.spinResult.textContent = "Spinning...";
 
-  await animateReels();
+  try {
+    await animateReels();
 
-  const result = await apiPost("/api/spin", { address: state.address });
-  if (!result.ok) {
+    const result = await apiPost("/api/spin", { address: state.address });
+    if (!result.ok) {
+      state.profile = result.profile ?? state.profile;
+      refreshProfileUI();
+      els.spinResult.textContent = "Cooldown active. Come back later.";
+      return;
+    }
+
     state.profile = result.profile;
     refreshProfileUI();
+
+    const display = normalizeDisplaySymbols(result.displaySymbols?.length ? result.displaySymbols : result.symbols);
+    for (let i = 0; i < els.reels.length; i += 1) {
+      els.reels[i].textContent = String(display[i]);
+    }
+
+    els.spinResult.textContent = `${result.label} +${result.reward} coins`;
+    trackEvent("spin_success");
+  } catch {
+    els.spinResult.textContent = "Spin failed. Try again.";
+  } finally {
+    // Without this a failed request left the reel locked for the whole session.
     state.spinning = false;
     updateCooldown();
-    els.spinResult.textContent = "Cooldown active. Come back later.";
-    return;
   }
-
-  state.profile = result.profile;
-  refreshProfileUI();
-
-  const display = normalizeDisplaySymbols(result.displaySymbols?.length ? result.displaySymbols : result.symbols);
-  for (let i = 0; i < els.reels.length; i += 1) {
-    els.reels[i].textContent = String(display[i]);
-  }
-
-  els.spinResult.textContent = `${result.label} +${result.reward} coins`;
-  state.spinning = false;
-  updateCooldown();
-  trackEvent("spin_success");
 }
 
 async function animateReels() {
@@ -268,11 +299,17 @@ async function startBattle(mode) {
     return;
   }
 
-  const start = await apiPost("/api/battle", {
-    address: state.address,
-    mode,
-    stage: "start"
-  });
+  let start;
+  try {
+    start = await apiPost("/api/battle", {
+      address: state.address,
+      mode,
+      stage: "start"
+    });
+  } catch {
+    els.matchResult.textContent = "Could not start the match. Try again.";
+    return;
+  }
 
   if (!start.ok) {
     if (start.reason === "NOT_ENOUGH_COINS") {
@@ -301,7 +338,13 @@ async function startBattle(mode) {
 }
 
 async function startPvpMatchmaking() {
-  const join = await apiPost("/api/pvp-join", { address: state.address });
+  let join;
+  try {
+    join = await apiPost("/api/pvp-join", { address: state.address });
+  } catch {
+    els.matchResult.textContent = "Matchmaking is unavailable. Try again.";
+    return;
+  }
 
   if (join.status === "insufficient") {
     await syncProfile();
@@ -368,6 +411,17 @@ function applyPvpSnapshot(snapshot) {
     return;
   }
 
+  if (snapshot.status === "idle") {
+    stopPvpPolling();
+    state.finished = true;
+    state.playerTurn = false;
+    els.battleTitle.textContent = "PvP";
+    els.battleSubtitle.textContent = "Match is no longer active";
+    els.matchResult.textContent = "Back to menu to queue again";
+    syncProfile().catch(() => {});
+    return;
+  }
+
   if (snapshot.status === "finished") {
     stopPvpPolling();
     state.finished = true;
@@ -401,8 +455,12 @@ async function onPlayerMove(index) {
   if (state.finished || state.board[index] || !state.playerTurn) return;
 
   if (state.mode === "pvp") {
-    const next = await apiPost("/api/pvp-move", { address: state.address, index });
-    applyPvpSnapshot(next);
+    try {
+      const next = await apiPost("/api/pvp-move", { address: state.address, index });
+      applyPvpSnapshot(next);
+    } catch {
+      els.matchResult.textContent = "Move failed. Retrying on next update.";
+    }
     return;
   }
 
@@ -441,17 +499,21 @@ async function resolveWinner(marker) {
 }
 
 async function finishBattle(outcome) {
-  const result = await apiPost("/api/battle", {
-    address: state.address,
-    mode: state.mode,
-    stage: "finish",
-    outcome
-  });
+  try {
+    const result = await apiPost("/api/battle", {
+      address: state.address,
+      mode: state.mode,
+      stage: "finish",
+      outcome
+    });
 
-  if (result.ok) {
-    state.profile = result.profile;
-    refreshProfileUI();
-    trackEvent(`battle_${state.mode}_${outcome}`);
+    if (result.ok) {
+      state.profile = result.profile;
+      refreshProfileUI();
+      trackEvent(`battle_${state.mode}_${outcome}`);
+    }
+  } catch {
+    // the local result is already on screen; stats will resync on next load
   }
 }
 
@@ -564,6 +626,7 @@ async function onchainCheckin() {
 
   state.checkinInFlight = true;
   els.checkinBtn.disabled = true;
+  els.checkinStatus.textContent = "";
 
   try {
     await syncProfile();
@@ -584,6 +647,7 @@ async function onchainCheckin() {
       state.profile = result.profile ?? state.profile;
       refreshProfileUI();
       await syncProfile();
+      els.checkinStatus.textContent = "Check-in recorded.";
       trackEvent("checkin_success");
       return;
     }
@@ -591,15 +655,22 @@ async function onchainCheckin() {
     if (result.reason === "ALREADY_CHECKED_IN") {
       state.profile = result.profile ?? state.profile;
       refreshProfileUI();
+      els.checkinStatus.textContent = "This transaction was already counted.";
       return;
     }
 
+    els.checkinStatus.textContent = "Check-in was not recorded. Try again.";
   } catch (error) {
+    // Previously every failure was swallowed and the button just reset, which
+    // looked like the tap had done nothing at all.
     if (isUserRejected(error)) {
+      els.checkinStatus.textContent = "Transaction rejected in wallet.";
       return;
     }
     const message = String(error?.message ?? "").toLowerCase();
-    if (message.includes("insufficient")) return;
+    els.checkinStatus.textContent = message.includes("insufficient")
+      ? "Not enough ETH on Base to send the check-in."
+      : "Check-in failed. Try again.";
   } finally {
     state.checkinInFlight = false;
     updateCheckinButtonState();
@@ -672,7 +743,7 @@ function renderLeaderboard() {
         <div class="lb-rank">#${index + 1}</div>
         <div>
           <div class="lb-name">${escapeHtml(nick)}</div>
-          <div class="lb-meta">${shortAddress(row.evmAddress || row.address)} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)} | Check-ins ${Number(row.checkins ?? 0)}</div>
+          <div class="lb-meta">${escapeHtml(shortAddress(row.evmAddress || row.address))} | PvE ${formatPct(row.pveWinRate)} | PvP ${formatPct(row.pvpWinRate)} | Check-ins ${Number(row.checkins ?? 0)}</div>
         </div>
         <div class="lb-rank">${Number(row.balance ?? 0)} coins</div>
       </div>`;
@@ -720,16 +791,22 @@ async function submitCheckinTransaction(chainId) {
 
   let lastError = null;
   for (const req of attempts) {
+    let result;
     try {
-      const result = await state.provider.request(req);
-      const normalized = await normalizeCheckinTxResult(req.method, result);
-      if (normalized?.txRef) return normalized;
+      result = await state.provider.request(req);
     } catch (error) {
       if (isUserRejected(error)) {
         throw error;
       }
       lastError = error;
+      continue;
     }
+
+    // The wallet accepted this call. Falling through to the next transport
+    // would ask it to submit the very same check-in a second time.
+    const normalized = await normalizeCheckinTxResult(req.method, result);
+    if (normalized?.txRef) return normalized;
+    throw new Error("check-in transaction reference not available");
   }
 
   throw new Error(lastError?.message ?? "check-in transaction failed");
@@ -815,15 +892,40 @@ function isUserRejected(error) {
   return message.includes("user rejected") || message.includes("rejected the request") || message.includes("denied");
 }
 
-async function ensureBaseChain() {
-  const chainId = await state.provider.request({ method: "eth_chainId" });
-  if (String(chainId).toLowerCase() === "0x2105") return "0x2105";
+const BASE_CHAIN_ID_HEX = "0x2105";
 
-  await state.provider.request({
-    method: "wallet_switchEthereumChain",
-    params: [{ chainId: "0x2105" }]
-  });
-  return "0x2105";
+async function ensureBaseChain() {
+  if (await isOnBaseChain()) return BASE_CHAIN_ID_HEX;
+
+  try {
+    await state.provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: BASE_CHAIN_ID_HEX }]
+    });
+  } catch (error) {
+    // 4902 = the wallet does not know this chain yet.
+    if (Number(error?.code) !== 4902) throw error;
+    await state.provider.request({
+      method: "wallet_addEthereumChain",
+      params: [{
+        chainId: BASE_CHAIN_ID_HEX,
+        chainName: "Base",
+        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+        rpcUrls: ["https://mainnet.base.org"],
+        blockExplorerUrls: ["https://basescan.org"]
+      }]
+    });
+  }
+
+  if (!(await isOnBaseChain())) {
+    throw new Error("Wallet is not on Base Mainnet");
+  }
+  return BASE_CHAIN_ID_HEX;
+}
+
+async function isOnBaseChain() {
+  const chainId = await state.provider.request({ method: "eth_chainId" });
+  return Number(chainId) === 8453;
 }
 
 async function getPaymasterUrl() {
@@ -867,9 +969,13 @@ function refreshProfileUI() {
 
 async function syncProfile() {
   if (!state.address) return;
-  const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}&_ts=${Date.now()}`);
-  state.profile = response.profile;
-  refreshProfileUI();
+  try {
+    const response = await apiGet(`/api/player?address=${encodeURIComponent(state.address)}&_ts=${Date.now()}`);
+    state.profile = response.profile ?? state.profile;
+    refreshProfileUI();
+  } catch {
+    // keep the last known profile instead of blocking the caller's navigation
+  }
 }
 
 async function verifyDbStatus() {

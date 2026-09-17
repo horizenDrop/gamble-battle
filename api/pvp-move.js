@@ -1,4 +1,5 @@
 const { parseBody, sendJson } = require("./_lib/profile");
+const { withLock } = require("./_lib/store");
 const {
   normalize,
   getPlayerMatchId,
@@ -33,28 +34,35 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 200, { status: "idle" });
   }
 
+  // Serialise per match so two rapid moves cannot both read the same board and
+  // overwrite each other's turn.
+  const result = await withLock(`pvp-match:${matchId}`, 3_000, () => applyMove(matchId, address, index));
+  return sendJson(res, result.status, result.payload);
+};
+
+async function applyMove(matchId, address, index) {
   const match = await loadMatch(matchId);
   if (!match) {
-    return sendJson(res, 200, { status: "idle" });
+    return { status: 200, payload: { status: "idle" } };
   }
 
   const timeout = await resolveTimeoutIfNeeded(match);
   if (timeout.resolved) {
     const last = await getAndClearLastResult(address);
-    return sendJson(res, 200, last ?? { status: "idle" });
+    return { status: 200, payload: last ?? { status: "idle" } };
   }
 
   const marker = markerFor(timeout.match, address);
   if (!marker) {
-    return sendJson(res, 400, { error: "Not in match" });
+    return { status: 400, payload: { error: "Not in match" } };
   }
 
   if (timeout.match.turnAddress !== address) {
-    return sendJson(res, 200, { status: "active", match: toMatchView(timeout.match, address), reason: "NOT_YOUR_TURN" });
+    return { status: 200, payload: { status: "active", match: toMatchView(timeout.match, address), reason: "NOT_YOUR_TURN" } };
   }
 
   if (timeout.match.board[index] !== null) {
-    return sendJson(res, 200, { status: "active", match: toMatchView(timeout.match, address), reason: "CELL_OCCUPIED" });
+    return { status: 200, payload: { status: "active", match: toMatchView(timeout.match, address), reason: "CELL_OCCUPIED" } };
   }
 
   timeout.match.board[index] = marker;
@@ -63,7 +71,7 @@ module.exports = async function handler(req, res) {
     const winnerAddress = winner === "X" ? timeout.match.players.X : timeout.match.players.O;
     await finalizeMatch(timeout.match, winnerAddress, "win");
     const last = await getAndClearLastResult(address);
-    return sendJson(res, 200, last ?? { status: "idle" });
+    return { status: 200, payload: last ?? { status: "idle" } };
   }
 
   const full = timeout.match.board.every((cell) => cell !== null);
@@ -75,7 +83,7 @@ module.exports = async function handler(req, res) {
     timeout.match.turnAddress = timeout.match.roundStarter === "X" ? timeout.match.players.X : timeout.match.players.O;
     timeout.match.turnStartedAt = Date.now();
     await saveMatch(timeout.match);
-    return sendJson(res, 200, { status: "active", match: toMatchView(timeout.match, address), reason: "ROUND_DRAW_RESET" });
+    return { status: 200, payload: { status: "active", match: toMatchView(timeout.match, address), reason: "ROUND_DRAW_RESET" } };
   }
 
   timeout.match.turn = marker === "X" ? "O" : "X";
@@ -83,8 +91,8 @@ module.exports = async function handler(req, res) {
   timeout.match.turnStartedAt = Date.now();
   await saveMatch(timeout.match);
 
-  return sendJson(res, 200, { status: "active", match: toMatchView(timeout.match, address) });
-};
+  return { status: 200, payload: { status: "active", match: toMatchView(timeout.match, address) } };
+}
 
 function toMatchView(match, address) {
   const normalized = normalize(address);

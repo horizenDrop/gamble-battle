@@ -1,4 +1,4 @@
-﻿# Gamble Battle
+# Gamble Battle
 
 Gamble Battle - Base Mini App с hourly spin и 1v1 матчами.
 
@@ -13,6 +13,7 @@ Gamble Battle - Base Mini App с hourly spin и 1v1 матчами.
 
 ## Build
 - `npm run build` - генерирует `public/*` для Vercel.
+- `npm run smoke` - прогоняет API-эндпоинты в memory-режиме (без Redis).
 
 ## Env для Base Mini App билда
 - `APP_URL` - полный публичный URL приложения, например `https://your-app.vercel.app`.
@@ -26,3 +27,14 @@ Gamble Battle - Base Mini App с hourly spin и 1v1 матчами.
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
 - `PAYMASTER_URL`
+
+Без одной из Redis-конфигураций стор работает в памяти: данные живут только в
+пределах одного warm-инстанса Vercel и теряются при рестарте.
+
+## Экономика
+- Монеты меняются только в `/api/spin` и в PvP-эндпоинтах (`/api/pvp-join`,
+  `/api/pvp-move`), где состояние матча держит сервер.
+- `/api/battle` пишет только статистику PvE и никогда не меняет баланс.
+- У API нет аутентификации: любой клиент может отправить чужой адрес и
+  накрутить PvE-статистику. Для защиты нужна подпись кошелька (SIWE) - это
+  отдельная задача.

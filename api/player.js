@@ -1,4 +1,4 @@
-﻿const { isValidAddress, loadProfile, saveProfile, normalizeAddress, parseBody, sendJson, sanitizeNickname, findProfileByNickname } = require("./_lib/profile");
+const { isValidAddress, loadProfile, saveProfile, normalizeAddress, parseBody, sendJson, sanitizeNickname, findProfileByNickname } = require("./_lib/profile");
 
 module.exports = async function handler(req, res) {
   if (req.method === "GET") {
@@ -7,7 +7,13 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 400, { error: "Invalid address" });
     }
 
+    // Only persist when the player is new. Writing on every poll rewrote the
+    // shared leaderboard index several times a second per player.
     const profile = await loadProfile(address);
+    if (profile.updatedAt) {
+      return sendJson(res, 200, { profile });
+    }
+
     const saved = await saveProfile(profile);
     return sendJson(res, 200, { profile: saved });
   }

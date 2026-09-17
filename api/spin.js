@@ -1,4 +1,5 @@
-﻿const { isValidAddress, loadProfile, parseBody, saveProfile, sendJson } = require("./_lib/profile");
+const { isValidAddress, loadProfile, parseBody, saveProfile, sendJson } = require("./_lib/profile");
+const { withLock } = require("./_lib/store");
 
 const COOLDOWN_MS = 60 * 60 * 1000;
 
@@ -22,37 +23,43 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 400, { error: "Invalid address" });
   }
 
-  const profile = await loadProfile(address);
-  const now = Date.now();
-  const elapsed = now - profile.lastSpinAt;
+  // Checking the cooldown and writing the new one must not interleave, or two
+  // concurrent requests both see the old timestamp and both pay out.
+  const outcome = await withLock(`spin:${address}`, 3_000, async () => {
+    const profile = await loadProfile(address);
+    const now = Date.now();
+    const elapsed = now - profile.lastSpinAt;
 
-  if (profile.lastSpinAt > 0 && elapsed < COOLDOWN_MS) {
-    return sendJson(res, 200, {
-      ok: false,
-      cooldownActive: true,
-      waitMs: COOLDOWN_MS - elapsed,
-      profile
-    });
-  }
+    if (profile.lastSpinAt > 0 && elapsed < COOLDOWN_MS) {
+      return {
+        ok: false,
+        cooldownActive: true,
+        waitMs: COOLDOWN_MS - elapsed,
+        profile
+      };
+    }
 
-  const symbols = [drawWeighted(), drawWeighted(), drawWeighted()];
-  const payout = evaluatePayout(symbols);
+    const symbols = [drawWeighted(), drawWeighted(), drawWeighted()];
+    const payout = evaluatePayout(symbols);
 
-  profile.balance += payout.reward;
-  profile.lastSpinAt = now;
-  profile.lastSpinReward = payout.reward;
-  profile.lastSpinSymbols = symbols.map((s) => s.id);
+    profile.balance += payout.reward;
+    profile.lastSpinAt = now;
+    profile.lastSpinReward = payout.reward;
+    profile.lastSpinSymbols = symbols.map((s) => s.id);
 
-  const saved = await saveProfile(profile);
-  return sendJson(res, 200, {
-    ok: true,
-    reward: payout.reward,
-    tier: payout.tier,
-    label: payout.label,
-    symbols: symbols.map((s) => s.id),
-    displaySymbols: symbols.map((s) => s.icon),
-    profile: saved
+    const saved = await saveProfile(profile);
+    return {
+      ok: true,
+      reward: payout.reward,
+      tier: payout.tier,
+      label: payout.label,
+      symbols: symbols.map((s) => s.id),
+      displaySymbols: symbols.map((s) => s.icon),
+      profile: saved
+    };
   });
+
+  return sendJson(res, 200, outcome);
 };
 
 function drawWeighted() {

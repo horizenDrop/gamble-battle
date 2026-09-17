@@ -1,4 +1,4 @@
-const { getValue, setValue, deleteValue } = require("./store");
+const { getValue, setValue, setIfAbsent, deleteValue, withLock } = require("./store");
 const { isValidAddress, loadProfile, saveProfile } = require("./profile");
 
 const PVP_ENTRY_COST = 10;
@@ -7,6 +7,8 @@ const QUEUE_KEY = "gb:pvp:queue";
 const MATCH_KEY_PREFIX = "gb:pvp:match:";
 const PLAYER_MATCH_PREFIX = "gb:pvp:player:";
 const LAST_RESULT_PREFIX = "gb:pvp:last:";
+const FINALIZE_PREFIX = "gb:pvp:final:";
+const QUEUE_TTL_MS = 5 * 60_000;
 
 function normalize(address) {
   return String(address ?? "").trim().toLowerCase();
@@ -24,18 +26,28 @@ function lastResultKey(address) {
   return `${LAST_RESULT_PREFIX}${normalize(address)}`;
 }
 
+function finalizeKey(matchId) {
+  return `${FINALIZE_PREFIX}${matchId}`;
+}
+
 async function getQueue() {
   const raw = await getValue(QUEUE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    const queue = JSON.parse(raw);
+    if (!queue?.address) return null;
+    if (Date.now() - Number(queue.createdAt ?? 0) > QUEUE_TTL_MS) {
+      await clearQueue();
+      return null;
+    }
+    return queue;
   } catch {
     return null;
   }
 }
 
 async function setQueue(queue) {
-  await setValue(QUEUE_KEY, JSON.stringify(queue));
+  await setValue(QUEUE_KEY, JSON.stringify(queue), QUEUE_TTL_MS);
 }
 
 async function clearQueue() {
@@ -134,6 +146,9 @@ async function chargeEntry(profileA, profileB) {
 }
 
 async function finalizeMatch(match, winnerAddress, reason) {
+  const claimed = await setIfAbsent(finalizeKey(match.id), reason || "done", 10 * 60_000);
+  if (!claimed) return false;
+
   const loserAddress = winnerAddress === match.players.X ? match.players.O : match.players.X;
   const winner = await loadProfile(winnerAddress);
   const loser = await loadProfile(loserAddress);
@@ -174,6 +189,7 @@ async function finalizeMatch(match, winnerAddress, reason) {
   await clearPlayerMatchId(winnerAddress);
   await clearPlayerMatchId(loserAddress);
   await clearMatch(match.id);
+  return true;
 }
 
 async function getAndClearLastResult(address) {
@@ -197,6 +213,12 @@ async function resolveTimeoutIfNeeded(match) {
   const winner = normalize(match.turnAddress) === match.players.X ? match.players.O : match.players.X;
   await finalizeMatch(match, winner, "timeout");
   return { resolved: true, match: null };
+}
+
+// Matchmaking reads the queue and then writes a match; without a lock two
+// simultaneous joins can both pair with the same queued player.
+async function withMatchmakingLock(fn) {
+  return withLock("pvp-matchmaking", 3_000, fn);
 }
 
 function canJoinAddress(address) {
@@ -227,5 +249,6 @@ module.exports = {
   finalizeMatch,
   getAndClearLastResult,
   resolveTimeoutIfNeeded,
+  withMatchmakingLock,
   canJoinAddress
 };

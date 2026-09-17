@@ -1,4 +1,4 @@
-﻿const { getValue, setValue } = require("./store");
+const { getValue, setValue, withLock } = require("./store");
 
 const DEFAULT_PROFILE = {
   address: "",
@@ -36,12 +36,15 @@ function profileKey(address) {
   return `gb:profile:${normalizeAddress(address)}`;
 }
 const PROFILE_INDEX_KEY = "gb:profiles:index";
+const PROFILE_INDEX_LIMIT = 500;
 
 function isValidAddress(address) {
   const value = normalizeAddress(address);
   return /^0x[a-f0-9]{40}$/.test(value);
 }
 
+// `updatedAt === 0` marks a profile that has never been persisted, which lets
+// callers avoid a pointless write on every read.
 async function loadProfile(address) {
   const normalized = normalizeAddress(address);
   const raw = await getValue(profileKey(normalized));
@@ -49,35 +52,32 @@ async function loadProfile(address) {
     return {
       ...DEFAULT_PROFILE,
       address: normalized,
-      updatedAt: Date.now()
+      updatedAt: 0
     };
   }
 
   try {
     const parsed = JSON.parse(raw);
-    return {
+    return sanitizeProfile({
       ...DEFAULT_PROFILE,
       ...parsed,
       address: normalized
-    };
+    });
   } catch {
     return {
       ...DEFAULT_PROFILE,
       address: normalized,
-      updatedAt: Date.now()
+      updatedAt: 0
     };
   }
 }
 
 async function saveProfile(profile) {
-  const pveGames = Number(profile.pveGames ?? 0);
-  const pvpGames = Number(profile.pvpGames ?? 0);
-  const pvePlayerWins = Number(profile.pvePlayerWins ?? 0);
-  const pvpWins = Number(profile.pvpWins ?? 0);
+  const sanitized = sanitizeProfile({ ...DEFAULT_PROFILE, ...profile });
+  const { pveGames, pvpGames, pvePlayerWins, pvpWins } = sanitized;
 
   const next = {
-    ...DEFAULT_PROFILE,
-    ...profile,
+    ...sanitized,
     address: normalizeAddress(profile.address),
     evmAddress: normalizeAddress(profile.address),
     nickname: sanitizeNickname(profile.nickname),
@@ -103,11 +103,7 @@ async function listProfiles(limit = 20) {
   }
 
   const entries = Object.values(index ?? {}).filter(Boolean);
-  entries.sort((a, b) => {
-    if ((b.balance ?? 0) !== (a.balance ?? 0)) return (b.balance ?? 0) - (a.balance ?? 0);
-    if ((b.pvpWinRate ?? 0) !== (a.pvpWinRate ?? 0)) return (b.pvpWinRate ?? 0) - (a.pvpWinRate ?? 0);
-    return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
-  });
+  entries.sort(compareProfiles);
 
   return entries.slice(0, Math.max(1, Math.min(100, Number(limit) || 20)));
 }
@@ -136,32 +132,55 @@ async function findProfileByNickname(nickname) {
   return null;
 }
 
+// The leaderboard index is a single JSON document, so a plain
+// read-modify-write loses entries whenever two players save at once. Serialise
+// it with a short lock and cap its size so it cannot grow without bound.
 async function upsertProfileIndex(profile) {
-  let index = {};
-  const raw = await getValue(PROFILE_INDEX_KEY);
-  if (raw) {
-    try {
-      index = JSON.parse(raw) ?? {};
-    } catch {
-      index = {};
+  await withLock("profile-index", 2_000, async () => {
+    let index = {};
+    const raw = await getValue(PROFILE_INDEX_KEY);
+    if (raw) {
+      try {
+        index = JSON.parse(raw) ?? {};
+      } catch {
+        index = {};
+      }
     }
+
+    index[profile.address] = {
+      address: profile.address,
+      evmAddress: profile.evmAddress,
+      nickname: profile.nickname,
+      balance: profile.balance,
+      checkins: profile.checkins,
+      pveWinRate: profile.pveWinRate,
+      pvpWinRate: profile.pvpWinRate,
+      wins: profile.wins,
+      losses: profile.losses,
+      draws: profile.draws,
+      updatedAt: profile.updatedAt
+    };
+
+    await setValue(PROFILE_INDEX_KEY, JSON.stringify(trimIndex(index, profile.address)));
+  });
+}
+
+function trimIndex(index, keepAddress) {
+  const entries = Object.entries(index).filter(([, row]) => row && typeof row === "object");
+  if (entries.length <= PROFILE_INDEX_LIMIT) return Object.fromEntries(entries);
+
+  entries.sort((a, b) => compareProfiles(a[1], b[1]));
+  const kept = entries.slice(0, PROFILE_INDEX_LIMIT);
+  if (!kept.some(([address]) => address === keepAddress) && index[keepAddress]) {
+    kept[kept.length - 1] = [keepAddress, index[keepAddress]];
   }
+  return Object.fromEntries(kept);
+}
 
-  index[profile.address] = {
-    address: profile.address,
-    evmAddress: profile.evmAddress,
-    nickname: profile.nickname,
-    balance: profile.balance,
-    checkins: profile.checkins,
-    pveWinRate: profile.pveWinRate,
-    pvpWinRate: profile.pvpWinRate,
-    wins: profile.wins,
-    losses: profile.losses,
-    draws: profile.draws,
-    updatedAt: profile.updatedAt
-  };
-
-  await setValue(PROFILE_INDEX_KEY, JSON.stringify(index));
+function compareProfiles(a, b) {
+  if ((b.balance ?? 0) !== (a.balance ?? 0)) return (b.balance ?? 0) - (a.balance ?? 0);
+  if ((b.pvpWinRate ?? 0) !== (a.pvpWinRate ?? 0)) return (b.pvpWinRate ?? 0) - (a.pvpWinRate ?? 0);
+  return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
 }
 
 function todayKey() {
@@ -169,6 +188,13 @@ function todayKey() {
 }
 
 function parseBody(req) {
+  if (Buffer.isBuffer(req.body)) {
+    try {
+      return JSON.parse(req.body.toString("utf8") || "{}");
+    } catch {
+      return {};
+    }
+  }
   if (req.body && typeof req.body === "object") return req.body;
   if (typeof req.body === "string") {
     try {
@@ -194,6 +220,29 @@ function sanitizeNickname(value) {
 
 function round2(value) {
   return Math.round(value * 100) / 100;
+}
+
+const NUMERIC_PROFILE_FIELDS = [
+  "balance", "wins", "losses", "draws", "totalGames", "pveGames", "pvpGames",
+  "pvePlayerWins", "pveBotWins", "pvpWins", "pvpLosses", "pvpDraws", "checkins"
+];
+
+// A corrupted or hand-crafted value must not turn a counter into NaN, which
+// would then be persisted and poison every later read.
+function sanitizeProfile(profile) {
+  const next = { ...profile };
+  for (const field of NUMERIC_PROFILE_FIELDS) {
+    const value = Number(next[field]);
+    next[field] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  }
+
+  const lastSpinAt = Number(next.lastSpinAt);
+  next.lastSpinAt = Number.isFinite(lastSpinAt) && lastSpinAt > 0 ? lastSpinAt : 0;
+
+  const lastSpinReward = Number(next.lastSpinReward);
+  next.lastSpinReward = Number.isFinite(lastSpinReward) ? lastSpinReward : 0;
+
+  return next;
 }
 
 module.exports = {
